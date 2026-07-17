@@ -1,0 +1,8 @@
+.vs/
+.build/
+**/bin/
+**/obj/
+artifacts/
+*.suo
+*.user
+*.userosscache
