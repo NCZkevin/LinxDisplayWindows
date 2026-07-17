@@ -2,8 +2,10 @@ namespace CodexLinxDisplay.Windows.Models;
 
 internal enum DisplayMode
 {
-    Codex,
-    CustomImage
+    Codex = 0,
+    CustomImage = 1,
+    Pomodoro = 2,
+    SystemMonitor = 3
 }
 
 internal sealed class AppSettings
@@ -15,4 +17,5 @@ internal sealed class AppSettings
     public DisplayMode DisplayMode { get; set; } = DisplayMode.Codex;
     public string? CustomImagePath { get; set; }
     public string? CustomImageName { get; set; }
+    public int SystemMonitorUploadIntervalSeconds { get; set; } = 5;
 }

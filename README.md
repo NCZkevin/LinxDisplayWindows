@@ -1,6 +1,6 @@
 # Codex 屏显 Windows 版
 
-这是 macOS 版 CodexLinxDisplay 的原生 Windows 实现。它常驻系统托盘，从本机 Codex 读取用量，生成固定为 `142 × 428` 的 JPEG，并通过局域网推送到 Linx68 键盘。
+这是 macOS 版 CodexLinxDisplay 的原生 Windows 实现。它常驻系统托盘，把 Codex 用量、番茄钟、系统状态或自定义图片渲染成固定为 `142 × 428` 的 JPEG，并通过局域网推送到 Linx68 键盘。
 
 <p align="center">
   <img src="src/CodexLinxDisplay.Windows/Assets/app-icon.png" width="128" alt="Codex 屏显应用图标">
@@ -9,6 +9,8 @@
 ## 功能
 
 - 读取 Codex 本周/当前周期剩余用量、可用重置次数和重置时间。
+- 内置番茄钟：可设置任务、专注/短休/长休时长，支持开始、暂停、继续、跳过和重置；每完成四个番茄自动进入长休息。
+- 内置系统监控：显示 CPU、内存占用、实时下载/上传速率和系统运行时间，推送间隔可选 2、5、10 或 30 秒。
 - 按 1、5、10 或 30 分钟自动刷新；内容没有变化时不重复推送。
 - 支持自定义图片，自动居中裁切，并为键盘自身的天气、Wi-Fi、电量状态栏保留顶部安全区。
 - 可调整顶部安全区（44–80px）和 JPEG 质量（50%–100%）。
@@ -31,6 +33,8 @@ http://192.168.31.71/image/upload
 ```
 
 程序会发送一个请求体为原始 JPEG 数据的 `POST` 请求，请求头为 `Content-Type: image/jpeg`。电脑与键盘需要连接在同一局域网。
+
+在“显示模式”中选择“番茄钟”或“系统监控”即可切换屏幕内容。番茄钟使用绝对结束时间，即使电脑锁屏或睡眠，恢复后也会自动推进到正确阶段；运行状态保存在本地，重启软件不会丢失。系统监控直接读取 Windows 和网卡的本机计数器，不需要管理员权限或第三方服务。
 
 Codex 读取依赖本机的 `codex.exe`。程序会先读取 `CODEX_CLI_PATH` 环境变量，再从 `PATH` 和 Windows 应用执行别名目录查找。若自动查找失败，可设置：
 
@@ -73,11 +77,11 @@ artifacts\windows-x64\CodexLinxDisplay.exe
 ```
 
 输出位于 `artifacts\windows-x64-framework-dependent`。它本身很小，但离开已安装的 .NET Desktop Runtime 无法运行。
-当前 x64 框架依赖构建约为 `0.21MB`。
+当前 x64 框架依赖构建约为 `0.40MB`。
 
 ## 验证
 
-不依赖第三方测试框架的冒烟测试会检查卡片尺寸、JPEG 编码、顶部安全区，以及发送给本地模拟设备的 HTTP 请求：
+不依赖第三方测试框架的冒烟测试会检查全部卡片尺寸、番茄钟阶段切换、Windows 系统采样、JPEG 编码、顶部安全区，以及发送给本地模拟设备的 HTTP 请求：
 
 ```powershell
 dotnet run --project .\tests\CodexLinxDisplay.Windows.SmokeTests --configuration Release
@@ -91,7 +95,7 @@ dotnet run --project .\tests\CodexLinxDisplay.Windows.SmokeTests --configuration
 
 ## 本地数据与隐私
 
-配置和自定义图片副本保存在 `%APPDATA%\CodexLinxDisplay`。程序不会上传 Codex 凭据或原始用量数据；只有渲染后的 JPEG 会发送到用户填写的键盘地址。
+配置、番茄钟状态和自定义图片副本保存在 `%APPDATA%\CodexLinxDisplay`。程序不会上传 Codex 凭据或原始用量/系统监控数据；只有渲染后的 JPEG 会发送到用户填写的键盘地址。
 
 登录时启动使用当前用户的注册表项：
 
@@ -104,6 +108,9 @@ HKCU\Software\Microsoft\Windows\CurrentVersion\Run\CodexLinxDisplay
 - `src/CodexLinxDisplay.Windows`：Windows 托盘应用。
 - `src/CodexLinxDisplay.Windows/Services/CodexRateLimitClient.cs`：Codex app-server stdio 协议。
 - `src/CodexLinxDisplay.Windows/Services/ScreenImageRenderer.cs`：用量卡片与自定义图片渲染、JPEG 编码。
+- `src/CodexLinxDisplay.Windows/Services/PomodoroService.cs`：可跨睡眠恢复的番茄钟状态机。
+- `src/CodexLinxDisplay.Windows/Services/SystemMonitorService.cs`：CPU、内存与网卡速率采样。
+- `src/CodexLinxDisplay.Windows/Services/StatusCardRenderer.cs`：番茄钟与系统监控卡片渲染。
 - `src/CodexLinxDisplay.Windows/Services/ImageApiClient.cs`：Linx68 图像接口上传。
 - `tests/CodexLinxDisplay.Windows.SmokeTests`：无需第三方测试框架的冒烟测试。
 - `scripts/build.ps1`：x64/ARM64 单文件发布脚本。

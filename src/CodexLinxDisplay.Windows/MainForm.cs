@@ -6,6 +6,9 @@ namespace CodexLinxDisplay.Windows;
 
 internal sealed class MainForm : Form
 {
+    private static readonly DisplayMode[] ModeOrder =
+        [DisplayMode.Codex, DisplayMode.Pomodoro, DisplayMode.SystemMonitor, DisplayMode.CustomImage];
+
     private readonly SettingsStore _settingsStore = new();
     private readonly CodexRateLimitClient _codexClient = new();
     private readonly ImageApiClient _imageClient = new();
@@ -14,6 +17,8 @@ internal sealed class MainForm : Form
     private readonly System.Windows.Forms.Timer _clockTimer = new() { Interval = 1_000 };
     private readonly NotifyIcon _notifyIcon = new();
     private readonly Icon _applicationIcon;
+    private readonly PomodoroService _pomodoroService;
+    private readonly SystemMonitorService _systemMonitor = new();
 
     private readonly ComboBox _modeCombo = new();
     private readonly TextBox _endpointText = new();
@@ -32,18 +37,36 @@ internal sealed class MainForm : Form
     private readonly Label _errorValue = new();
     private readonly PictureBox _preview = new();
     private readonly Label _previewCaption = new();
+    private readonly Panel _pomodoroPanel = new();
+    private readonly Panel _systemPanel = new();
+    private GroupBox? _modeOptionsGroup;
+    private readonly TextBox _pomodoroTaskText = new();
+    private readonly NumericUpDown _focusMinutesInput = new();
+    private readonly NumericUpDown _shortBreakInput = new();
+    private readonly NumericUpDown _longBreakInput = new();
+    private readonly Button _pomodoroStartButton = new();
+    private readonly Button _pomodoroSkipButton = new();
+    private readonly Button _pomodoroResetButton = new();
+    private readonly Label _pomodoroStatus = new();
+    private readonly ComboBox _systemIntervalCombo = new();
+    private readonly Label _systemStatus = new();
 
     private AppSettings _settings;
     private UsageSnapshot? _snapshot;
+    private SystemSnapshot _systemSnapshot = SystemSnapshot.Empty;
     private Bitmap? _customSource;
     private string? _lastUploadedHash;
     private string? _lastRenderedMinute;
+    private DateTimeOffset _lastDynamicUploadAt = DateTimeOffset.MinValue;
     private bool _allowExit;
     private bool _suppressEvents;
 
-    public MainForm(bool testMode = false)
+    public MainForm(bool testMode = false, DisplayMode? initialMode = null)
     {
         _settings = _settingsStore.Load();
+        if (initialMode is not null) _settings.DisplayMode = initialMode.Value;
+        _pomodoroService = new PomodoroService(_settingsStore.LoadPomodoro());
+        _systemSnapshot = _systemMonitor.Sample();
         _applicationIcon = LoadApplicationIcon();
         Text = "Codex 屏显 for Linx68";
         Icon = _applicationIcon;
@@ -55,6 +78,7 @@ internal sealed class MainForm : Form
         Size = new Size(1_100, 820);
         Font = new Font("Microsoft YaHei UI", 9F);
 
+        _suppressEvents = true;
         BuildInterface();
         LoadSettingsIntoControls();
         LoadCustomImage();
@@ -73,7 +97,7 @@ internal sealed class MainForm : Form
         _notifyIcon.DoubleClick += (_, _) => ShowFromTray();
 
         _refreshTimer.Tick += async (_, _) => await SynchronizeCodexAsync(upload: true, forceUpload: false);
-        _clockTimer.Tick += async (_, _) => await RefreshClockIfNeededAsync();
+        _clockTimer.Tick += async (_, _) => await RefreshDynamicContentAsync();
         FormClosing += HandleFormClosing;
         if (!testMode)
             Shown += HandleShown;
@@ -124,7 +148,7 @@ internal sealed class MainForm : Form
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
             ColumnCount = 1,
-            RowCount = 5,
+            RowCount = 6,
             Dock = DockStyle.Top,
             Margin = Padding.Empty,
             GrowStyle = TableLayoutPanelGrowStyle.FixedSize
@@ -132,10 +156,11 @@ internal sealed class MainForm : Form
         settingsStack.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         settingsHost.Controls.Add(settingsStack);
         settingsStack.Controls.Add(BuildDisplaySection(), 0, 0);
-        settingsStack.Controls.Add(BuildEndpointSection(), 0, 1);
-        settingsStack.Controls.Add(BuildRefreshSection(), 0, 2);
-        settingsStack.Controls.Add(BuildLayoutSection(), 0, 3);
-        settingsStack.Controls.Add(BuildStatusSection(), 0, 4);
+        settingsStack.Controls.Add(BuildModeOptionsSection(), 0, 1);
+        settingsStack.Controls.Add(BuildEndpointSection(), 0, 2);
+        settingsStack.Controls.Add(BuildRefreshSection(), 0, 3);
+        settingsStack.Controls.Add(BuildLayoutSection(), 0, 4);
+        settingsStack.Controls.Add(BuildStatusSection(), 0, 5);
 
         var previewPanel = new TableLayoutPanel
         {
@@ -179,7 +204,7 @@ internal sealed class MainForm : Form
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         grid.Controls.Add(NewLabel("显示模式"), 0, 0);
         _modeCombo.DropDownStyle = ComboBoxStyle.DropDownList;
-        _modeCombo.Items.AddRange(["Codex 用量", "自定义图片"]);
+        _modeCombo.Items.AddRange(["Codex 用量", "番茄钟", "系统监控", "自定义图片"]);
         _modeCombo.Dock = DockStyle.Fill;
         _modeCombo.SelectedIndexChanged += async (_, _) => await ChangeModeAsync();
         grid.Controls.Add(_modeCombo, 1, 0);
@@ -195,6 +220,110 @@ internal sealed class MainForm : Form
         _customImageName.TextAlign = ContentAlignment.MiddleLeft;
         grid.Controls.Add(_customImageName, 1, 1);
         return NewGroup("显示内容", grid);
+    }
+
+    private GroupBox BuildModeOptionsSection()
+    {
+        var pomodoroGrid = NewGrid(2);
+        pomodoroGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 150));
+        pomodoroGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        pomodoroGrid.Controls.Add(NewLabel("当前任务"), 0, 0);
+        _pomodoroTaskText.Dock = DockStyle.Fill;
+        _pomodoroTaskText.MaxLength = 24;
+        _pomodoroTaskText.Leave += (_, _) => SavePomodoroFromControls();
+        pomodoroGrid.Controls.Add(_pomodoroTaskText, 1, 0);
+
+        pomodoroGrid.Controls.Add(NewLabel("时长（分钟）"), 0, 1);
+        var durationFlow = new FlowLayoutPanel
+        {
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Dock = DockStyle.Fill,
+            WrapContents = true,
+            Margin = Padding.Empty
+        };
+        ConfigureMinuteInput(_focusMinutesInput, 1, 120);
+        ConfigureMinuteInput(_shortBreakInput, 1, 60);
+        ConfigureMinuteInput(_longBreakInput, 1, 120);
+        durationFlow.Controls.Add(NewLabel("专注"));
+        durationFlow.Controls.Add(_focusMinutesInput);
+        durationFlow.Controls.Add(NewLabel("短休"));
+        durationFlow.Controls.Add(_shortBreakInput);
+        durationFlow.Controls.Add(NewLabel("长休"));
+        durationFlow.Controls.Add(_longBreakInput);
+        pomodoroGrid.Controls.Add(durationFlow, 1, 1);
+
+        var actionFlow = new FlowLayoutPanel
+        {
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Dock = DockStyle.Fill,
+            WrapContents = true,
+            Margin = Padding.Empty
+        };
+        _pomodoroStartButton.AutoSize = true;
+        _pomodoroStartButton.Click += async (_, _) => await TogglePomodoroAsync();
+        _pomodoroSkipButton.Text = "跳过";
+        _pomodoroSkipButton.AutoSize = true;
+        _pomodoroSkipButton.Click += async (_, _) => await SkipPomodoroAsync();
+        _pomodoroResetButton.Text = "重置";
+        _pomodoroResetButton.AutoSize = true;
+        _pomodoroResetButton.Click += async (_, _) => await ResetPomodoroAsync();
+        actionFlow.Controls.Add(_pomodoroStartButton);
+        actionFlow.Controls.Add(_pomodoroSkipButton);
+        actionFlow.Controls.Add(_pomodoroResetButton);
+        pomodoroGrid.Controls.Add(actionFlow, 0, 2);
+        pomodoroGrid.SetColumnSpan(actionFlow, 2);
+        _pomodoroStatus.AutoSize = true;
+        _pomodoroStatus.Dock = DockStyle.Fill;
+        _pomodoroStatus.ForeColor = SystemColors.GrayText;
+        pomodoroGrid.Controls.Add(_pomodoroStatus, 0, 3);
+        pomodoroGrid.SetColumnSpan(_pomodoroStatus, 2);
+        _pomodoroPanel.AutoSize = true;
+        _pomodoroPanel.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+        _pomodoroPanel.Dock = DockStyle.Top;
+        _pomodoroPanel.Controls.Add(pomodoroGrid);
+
+        var systemGrid = NewGrid(2);
+        systemGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 150));
+        systemGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        systemGrid.Controls.Add(NewLabel("推送间隔"), 0, 0);
+        _systemIntervalCombo.DropDownStyle = ComboBoxStyle.DropDownList;
+        _systemIntervalCombo.Items.AddRange(["2 秒", "5 秒", "10 秒", "30 秒"]);
+        _systemIntervalCombo.Dock = DockStyle.Fill;
+        _systemIntervalCombo.SelectedIndexChanged += (_, _) => SaveSettingsFromControls();
+        systemGrid.Controls.Add(_systemIntervalCombo, 1, 0);
+        _systemStatus.AutoSize = true;
+        _systemStatus.Dock = DockStyle.Fill;
+        _systemStatus.ForeColor = SystemColors.GrayText;
+        systemGrid.Controls.Add(_systemStatus, 0, 1);
+        systemGrid.SetColumnSpan(_systemStatus, 2);
+        _systemPanel.AutoSize = true;
+        _systemPanel.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+        _systemPanel.Dock = DockStyle.Top;
+        _systemPanel.Controls.Add(systemGrid);
+
+        var host = new TableLayoutPanel
+        {
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            ColumnCount = 1,
+            RowCount = 2,
+            Dock = DockStyle.Top,
+            Margin = Padding.Empty
+        };
+        host.Controls.Add(_pomodoroPanel, 0, 0);
+        host.Controls.Add(_systemPanel, 0, 1);
+        _modeOptionsGroup = NewGroup("模式设置", host);
+        return _modeOptionsGroup;
+    }
+
+    private void ConfigureMinuteInput(NumericUpDown input, int minimum, int maximum)
+    {
+        input.Minimum = minimum;
+        input.Maximum = maximum;
+        input.Width = 64;
+        input.ValueChanged += (_, _) => SavePomodoroFromControls();
     }
 
     private GroupBox BuildEndpointSection()
@@ -349,7 +478,7 @@ internal sealed class MainForm : Form
     private void LoadSettingsIntoControls()
     {
         _suppressEvents = true;
-        _modeCombo.SelectedIndex = _settings.DisplayMode == DisplayMode.Codex ? 0 : 1;
+        _modeCombo.SelectedIndex = Math.Max(0, Array.IndexOf(ModeOrder, _settings.DisplayMode));
         _endpointText.Text = _settings.Endpoint;
         _intervalCombo.SelectedIndex = _settings.RefreshIntervalSeconds switch
         {
@@ -361,12 +490,25 @@ internal sealed class MainForm : Form
         _safeAreaInput.Value = _settings.SafeAreaHeight;
         _qualitySlider.Value = _settings.JpegQuality;
         _qualityValue.Text = $"{_settings.JpegQuality}%";
+        _systemIntervalCombo.SelectedIndex = _settings.SystemMonitorUploadIntervalSeconds switch
+        {
+            2 => 0,
+            10 => 2,
+            30 => 3,
+            _ => 1
+        };
+        _pomodoroTaskText.Text = _pomodoroService.State.TaskName;
+        _focusMinutesInput.Value = _pomodoroService.State.FocusMinutes;
+        _shortBreakInput.Value = _pomodoroService.State.ShortBreakMinutes;
+        _longBreakInput.Value = _pomodoroService.State.LongBreakMinutes;
         _startupCheck.Checked = StartupManager.IsEnabled();
         _customImageName.Text = _settings.CustomImageName ?? "尚未选择图片";
         _statusValue.Text = "等待首次同步";
         _lastRefreshValue.Text = "尚未刷新";
         _lastUploadValue.Text = "尚未推送";
         _suppressEvents = false;
+        UpdatePomodoroControls(DateTimeOffset.Now);
+        UpdateSystemStatus();
     }
 
     private void LoadCustomImage()
@@ -389,20 +531,18 @@ internal sealed class MainForm : Form
             Hide();
         RestartTimer();
         _clockTimer.Start();
-        if (_settings.DisplayMode == DisplayMode.Codex)
-            await SynchronizeCodexAsync(upload: true, forceUpload: true);
-        else if (_customSource is not null)
-            await PushCustomImageAsync(forceUpload: true);
-        else
-            SetStatus("请选择一张图片");
+        await PushCurrentAsync(forceUpload: true);
     }
 
     private async Task ChangeModeAsync()
     {
         if (_suppressEvents) return;
-        _settings.DisplayMode = _modeCombo.SelectedIndex == 0 ? DisplayMode.Codex : DisplayMode.CustomImage;
+        _settings.DisplayMode = _modeCombo.SelectedIndex >= 0 && _modeCombo.SelectedIndex < ModeOrder.Length
+            ? ModeOrder[_modeCombo.SelectedIndex]
+            : DisplayMode.Codex;
         var expectedMode = _settings.DisplayMode;
         _lastUploadedHash = null;
+        _lastDynamicUploadAt = DateTimeOffset.MinValue;
         SaveSettingsFromControls();
         UpdateModeControls();
         UpdatePreview();
@@ -414,12 +554,7 @@ internal sealed class MainForm : Form
         _syncLock.Release();
         if (_settings.DisplayMode != expectedMode) return;
 
-        if (expectedMode == DisplayMode.Codex)
-            await SynchronizeCodexAsync(upload: true, forceUpload: true);
-        else if (_customSource is not null)
-            await PushCustomImageAsync(forceUpload: true);
-        else
-            SetStatus("请选择一张图片");
+        await PushCurrentAsync(forceUpload: true);
     }
 
     private async Task ChooseCustomImageAsync()
@@ -447,7 +582,7 @@ internal sealed class MainForm : Form
 
             if (_settings.DisplayMode != DisplayMode.CustomImage)
             {
-                _modeCombo.SelectedIndex = 1;
+                _modeCombo.SelectedIndex = Array.IndexOf(ModeOrder, DisplayMode.CustomImage);
                 return;
             }
 
@@ -463,10 +598,19 @@ internal sealed class MainForm : Form
 
     private async Task PushCurrentAsync(bool forceUpload)
     {
-        if (_settings.DisplayMode == DisplayMode.Codex)
-            await SynchronizeCodexAsync(upload: true, forceUpload);
-        else
-            await PushCustomImageAsync(forceUpload);
+        switch (_settings.DisplayMode)
+        {
+            case DisplayMode.Codex:
+                await SynchronizeCodexAsync(upload: true, forceUpload);
+                break;
+            case DisplayMode.CustomImage:
+                await PushCustomImageAsync(forceUpload);
+                break;
+            case DisplayMode.Pomodoro:
+            case DisplayMode.SystemMonitor:
+                await PushStatusModeAsync(forceUpload);
+                break;
+        }
     }
 
     private async Task SynchronizeCodexAsync(bool upload, bool forceUpload)
@@ -544,26 +688,128 @@ internal sealed class MainForm : Form
         SetStatus($"推送成功 · HTTP {statusCode}");
     }
 
-    private async Task RefreshClockIfNeededAsync()
+    private async Task RefreshDynamicContentAsync()
     {
-        if (_settings.DisplayMode != DisplayMode.Codex || _snapshot is null) return;
-        var currentMinute = DateTime.Now.ToString("yyyyMMddHHmm");
-        if (currentMinute == _lastRenderedMinute) return;
-        if (!await _syncLock.WaitAsync(0)) return;
+        var now = DateTimeOffset.Now;
+        if (_settings.DisplayMode == DisplayMode.Codex)
+        {
+            if (_snapshot is null) return;
+            var currentMinute = now.ToString("yyyyMMddHHmm");
+            if (currentMinute == _lastRenderedMinute) return;
+            await PushStatusOrClockAsync("时间未变化", "时钟推送失败");
+            return;
+        }
 
+        if (_settings.DisplayMode == DisplayMode.Pomodoro)
+        {
+            var transitioned = _pomodoroService.Tick(now);
+            if (transitioned) SavePomodoroState();
+            UpdatePomodoroControls(now);
+            UpdatePreview();
+            if (transitioned || (now - _lastDynamicUploadAt).TotalSeconds >= 5)
+                await PushStatusModeAsync(forceUpload: transitioned);
+            return;
+        }
+
+        if (_settings.DisplayMode == DisplayMode.SystemMonitor)
+        {
+            try
+            {
+                _systemSnapshot = _systemMonitor.Sample(now);
+                UpdateSystemStatus();
+                UpdatePreview();
+                if ((now - _lastDynamicUploadAt).TotalSeconds >= _settings.SystemMonitorUploadIntervalSeconds)
+                    await PushStatusModeAsync(forceUpload: false);
+            }
+            catch (Exception error)
+            {
+                SetStatus("系统监控读取失败", error.Message);
+            }
+        }
+    }
+
+    private async Task PushStatusOrClockAsync(string unchangedStatus, string failureStatus)
+    {
+        if (!await _syncLock.WaitAsync(0)) return;
         try
         {
             UpdatePreview();
-            await UploadPreviewAsync(forceUpload: false, unchangedStatus: "时间未变化");
+            await UploadPreviewAsync(forceUpload: false, unchangedStatus);
         }
         catch (Exception error)
         {
-            SetStatus("时钟推送失败", error.Message);
+            SetStatus(failureStatus, error.Message);
         }
         finally
         {
             _syncLock.Release();
         }
+    }
+
+    private async Task PushStatusModeAsync(bool forceUpload)
+    {
+        if (_settings.DisplayMode is not (DisplayMode.Pomodoro or DisplayMode.SystemMonitor)) return;
+        if (!await _syncLock.WaitAsync(0)) return;
+        SetBusy(true);
+        try
+        {
+            if (_settings.DisplayMode == DisplayMode.Pomodoro)
+            {
+                if (_pomodoroService.Tick(DateTimeOffset.Now)) SavePomodoroState();
+                UpdatePomodoroControls(DateTimeOffset.Now);
+            }
+            else if (_settings.DisplayMode == DisplayMode.SystemMonitor
+                     && (DateTimeOffset.Now - _systemSnapshot.SampledAt).TotalMilliseconds >= 500)
+            {
+                _systemSnapshot = _systemMonitor.Sample();
+                UpdateSystemStatus();
+            }
+            UpdatePreview();
+            await UploadPreviewAsync(forceUpload, "画面未变化");
+            _lastDynamicUploadAt = DateTimeOffset.Now;
+        }
+        catch (Exception error)
+        {
+            SetStatus("动态画面推送失败", error.Message);
+        }
+        finally
+        {
+            SetBusy(false);
+            _syncLock.Release();
+        }
+    }
+
+    private async Task TogglePomodoroAsync()
+    {
+        SavePomodoroFromControls();
+        var now = DateTimeOffset.Now;
+        if (_pomodoroService.State.Phase is PomodoroPhase.Focus or PomodoroPhase.ShortBreak or PomodoroPhase.LongBreak)
+            _pomodoroService.Pause(now);
+        else
+            _pomodoroService.StartOrResume(now);
+        SavePomodoroState();
+        UpdatePomodoroControls(now);
+        UpdatePreview();
+        await PushStatusModeAsync(forceUpload: true);
+    }
+
+    private async Task SkipPomodoroAsync()
+    {
+        SavePomodoroFromControls();
+        _pomodoroService.Skip(DateTimeOffset.Now);
+        SavePomodoroState();
+        UpdatePomodoroControls(DateTimeOffset.Now);
+        UpdatePreview();
+        await PushStatusModeAsync(forceUpload: true);
+    }
+
+    private async Task ResetPomodoroAsync()
+    {
+        _pomodoroService.Reset();
+        SavePomodoroState();
+        UpdatePomodoroControls(DateTimeOffset.Now);
+        UpdatePreview();
+        await PushStatusModeAsync(forceUpload: true);
     }
 
     private void UpdatePreview()
@@ -582,6 +828,19 @@ internal sealed class MainForm : Form
                 }
                 next = ScreenImageRenderer.RenderCustomImage(_customSource, _settings.SafeAreaHeight);
                 _previewCaption.Text = $"自定义图片\r\n顶部 {_settings.SafeAreaHeight}px 留空";
+            }
+            else if (_settings.DisplayMode == DisplayMode.Pomodoro)
+            {
+                next = StatusCardRenderer.RenderPomodoro(
+                    _pomodoroService.GetSnapshot(DateTimeOffset.Now),
+                    _settings.SafeAreaHeight,
+                    DateTimeOffset.Now);
+                _previewCaption.Text = $"番茄钟\r\n顶部 {_settings.SafeAreaHeight}px 留空";
+            }
+            else if (_settings.DisplayMode == DisplayMode.SystemMonitor)
+            {
+                next = StatusCardRenderer.RenderSystem(_systemSnapshot, _settings.SafeAreaHeight);
+                _previewCaption.Text = $"CPU / 内存 / 网络\r\n顶部 {_settings.SafeAreaHeight}px 留空";
             }
             else
             {
@@ -624,6 +883,13 @@ internal sealed class MainForm : Form
         };
         _settings.SafeAreaHeight = (int)_safeAreaInput.Value;
         _settings.JpegQuality = _qualitySlider.Value;
+        _settings.SystemMonitorUploadIntervalSeconds = _systemIntervalCombo.SelectedIndex switch
+        {
+            0 => 2,
+            2 => 10,
+            3 => 30,
+            _ => 5
+        };
         try
         {
             _settingsStore.Save(_settings);
@@ -651,11 +917,69 @@ internal sealed class MainForm : Form
         }
     }
 
+    private void SavePomodoroFromControls()
+    {
+        if (_suppressEvents) return;
+        _pomodoroService.State.TaskName = string.IsNullOrWhiteSpace(_pomodoroTaskText.Text)
+            ? "专注工作"
+            : _pomodoroTaskText.Text.Trim();
+        _pomodoroService.State.FocusMinutes = (int)_focusMinutesInput.Value;
+        _pomodoroService.State.ShortBreakMinutes = (int)_shortBreakInput.Value;
+        _pomodoroService.State.LongBreakMinutes = (int)_longBreakInput.Value;
+        SavePomodoroState();
+        UpdatePomodoroControls(DateTimeOffset.Now);
+        if (_settings.DisplayMode == DisplayMode.Pomodoro) UpdatePreview();
+    }
+
+    private void SavePomodoroState()
+    {
+        try
+        {
+            _settingsStore.SavePomodoro(_pomodoroService.State);
+        }
+        catch (Exception error)
+        {
+            SetStatus("番茄钟保存失败", error.Message);
+        }
+    }
+
+    private void UpdatePomodoroControls(DateTimeOffset now)
+    {
+        var snapshot = _pomodoroService.GetSnapshot(now);
+        _pomodoroStartButton.Text = snapshot.IsRunning ? "暂停" : snapshot.IsPaused ? "继续" : "开始";
+        var phase = snapshot.Phase switch
+        {
+            PomodoroPhase.Focus => "专注中",
+            PomodoroPhase.ShortBreak => "短休息",
+            PomodoroPhase.LongBreak => "长休息",
+            PomodoroPhase.Paused => "已暂停",
+            _ => "准备开始"
+        };
+        var seconds = Math.Max(0, (int)Math.Ceiling(snapshot.Remaining.TotalSeconds));
+        _pomodoroStatus.Text = $"{phase} · {seconds / 60:00}:{seconds % 60:00} · 已完成 {snapshot.CompletedFocusSessions} 个番茄";
+    }
+
+    private void UpdateSystemStatus()
+    {
+        _systemStatus.Text = $"CPU {_systemSnapshot.CpuPercent:0}% · 内存 {_systemSnapshot.MemoryPercent:0}% · "
+            + $"↓ {StatusCardRenderer.FormatRate(_systemSnapshot.DownloadBytesPerSecond)} · "
+            + $"↑ {StatusCardRenderer.FormatRate(_systemSnapshot.UploadBytesPerSecond)}";
+    }
+
     private void UpdateModeControls()
     {
         var isCodex = _settings.DisplayMode == DisplayMode.Codex;
-        _chooseImageButton.Enabled = !isCodex;
-        _customImageName.Enabled = !isCodex;
+        var isCustom = _settings.DisplayMode == DisplayMode.CustomImage;
+        var isPomodoro = _settings.DisplayMode == DisplayMode.Pomodoro;
+        var isSystem = _settings.DisplayMode == DisplayMode.SystemMonitor;
+        _chooseImageButton.Visible = isCustom;
+        _customImageName.Visible = isCustom;
+        _chooseImageButton.Enabled = isCustom;
+        _customImageName.Enabled = isCustom;
+        _pomodoroPanel.Visible = isPomodoro;
+        _systemPanel.Visible = isSystem;
+        if (_modeOptionsGroup is not null)
+            _modeOptionsGroup.Visible = isPomodoro || isSystem;
         _intervalCombo.Enabled = isCodex;
         _refreshButton.Enabled = isCodex;
     }
@@ -674,6 +998,9 @@ internal sealed class MainForm : Form
         _pushButton.Enabled = !busy;
         _refreshButton.Enabled = !busy && _settings.DisplayMode == DisplayMode.Codex;
         _chooseImageButton.Enabled = !busy && _settings.DisplayMode == DisplayMode.CustomImage;
+        _pomodoroStartButton.Enabled = !busy;
+        _pomodoroSkipButton.Enabled = !busy;
+        _pomodoroResetButton.Enabled = !busy;
     }
 
     private void SetStatus(string status, string? error = null)

@@ -12,6 +12,7 @@ internal sealed class SettingsStore
         "CodexLinxDisplay");
 
     public string SettingsPath => Path.Combine(DataDirectory, "settings.json");
+    public string PomodoroPath => Path.Combine(DataDirectory, "pomodoro.json");
     public string CustomImagePath => Path.Combine(DataDirectory, "custom-image.png");
 
     public AppSettings Load()
@@ -26,6 +27,9 @@ internal sealed class SettingsStore
             settings.RefreshIntervalSeconds = settings.RefreshIntervalSeconds is 60 or 300 or 600 or 1800
                 ? settings.RefreshIntervalSeconds
                 : 300;
+            settings.SystemMonitorUploadIntervalSeconds = settings.SystemMonitorUploadIntervalSeconds is 2 or 5 or 10 or 30
+                ? settings.SystemMonitorUploadIntervalSeconds
+                : 5;
             return settings;
         }
         catch
@@ -40,5 +44,27 @@ internal sealed class SettingsStore
         var temporaryPath = SettingsPath + ".tmp";
         File.WriteAllText(temporaryPath, JsonSerializer.Serialize(settings, JsonOptions));
         File.Move(temporaryPath, SettingsPath, true);
+    }
+
+    public PomodoroState LoadPomodoro()
+    {
+        try
+        {
+            if (!File.Exists(PomodoroPath)) return new PomodoroState();
+            return JsonSerializer.Deserialize<PomodoroState>(File.ReadAllText(PomodoroPath), JsonOptions)
+                ?? new PomodoroState();
+        }
+        catch
+        {
+            return new PomodoroState();
+        }
+    }
+
+    public void SavePomodoro(PomodoroState state)
+    {
+        Directory.CreateDirectory(DataDirectory);
+        var temporaryPath = PomodoroPath + ".tmp";
+        File.WriteAllText(temporaryPath, JsonSerializer.Serialize(state, JsonOptions));
+        File.Move(temporaryPath, PomodoroPath, true);
     }
 }

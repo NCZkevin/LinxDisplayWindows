@@ -26,6 +26,7 @@ if (Test-Path -LiteralPath $outputPath) {
 dotnet publish $projectPath `
   --configuration Release `
   --runtime $Runtime `
+  --no-restore `
   --self-contained $selfContained `
   -p:PublishSingleFile=true `
   -p:EnableCompressionInSingleFile=$selfContained `
@@ -33,5 +34,9 @@ dotnet publish $projectPath `
   -p:DebugSymbols=false `
   -p:DebugType=None `
   --output $outputPath
+
+if ($LASTEXITCODE -ne 0) {
+  throw "dotnet publish failed with exit code $LASTEXITCODE."
+}
 
 Write-Host "Windows build created at $outputPath"
