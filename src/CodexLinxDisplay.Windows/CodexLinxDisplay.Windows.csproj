@@ -7,6 +7,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <AssemblyName>CodexLinxDisplay</AssemblyName>
     <RootNamespace>CodexLinxDisplay.Windows</RootNamespace>
     <Version>0.2.0</Version>

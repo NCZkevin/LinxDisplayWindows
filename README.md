@@ -2,6 +2,10 @@
 
 这是 macOS 版 CodexLinxDisplay 的原生 Windows 实现。它常驻系统托盘，从本机 Codex 读取用量，生成固定为 `142 × 428` 的 JPEG，并通过局域网推送到 Linx68 键盘。
 
+<p align="center">
+  <img src="src/CodexLinxDisplay.Windows/Assets/app-icon.png" width="128" alt="Codex 屏显应用图标">
+</p>
+
 ## 功能
 
 - 读取 Codex 本周/当前周期剩余用量、可用重置次数和重置时间。

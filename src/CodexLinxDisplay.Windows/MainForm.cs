@@ -13,6 +13,7 @@ internal sealed class MainForm : Form
     private readonly System.Windows.Forms.Timer _refreshTimer = new();
     private readonly System.Windows.Forms.Timer _clockTimer = new() { Interval = 1_000 };
     private readonly NotifyIcon _notifyIcon = new();
+    private readonly Icon _applicationIcon;
 
     private readonly ComboBox _modeCombo = new();
     private readonly TextBox _endpointText = new();
@@ -43,7 +44,9 @@ internal sealed class MainForm : Form
     public MainForm(bool testMode = false)
     {
         _settings = _settingsStore.Load();
+        _applicationIcon = LoadApplicationIcon();
         Text = "Codex 屏显 for Linx68";
+        Icon = _applicationIcon;
         StartPosition = FormStartPosition.CenterScreen;
         AutoScaleMode = AutoScaleMode.Dpi;
         AutoScaleDimensions = new SizeF(96F, 96F);
@@ -63,7 +66,7 @@ internal sealed class MainForm : Form
         trayMenu.Items.Add("立即推送", null, async (_, _) => await PushCurrentAsync(true));
         trayMenu.Items.Add(new ToolStripSeparator());
         trayMenu.Items.Add("退出", null, (_, _) => ExitApplication());
-        _notifyIcon.Icon = SystemIcons.Application;
+        _notifyIcon.Icon = _applicationIcon;
         _notifyIcon.Text = "Codex 屏显";
         _notifyIcon.Visible = !testMode;
         _notifyIcon.ContextMenuStrip = trayMenu;
@@ -84,6 +87,7 @@ internal sealed class MainForm : Form
             _clockTimer.Dispose();
             _notifyIcon.Visible = false;
             _notifyIcon.Dispose();
+            _applicationIcon.Dispose();
             _imageClient.Dispose();
             _syncLock.Dispose();
             _customSource?.Dispose();
@@ -702,5 +706,18 @@ internal sealed class MainForm : Form
     {
         _allowExit = true;
         Close();
+    }
+
+    private static Icon LoadApplicationIcon()
+    {
+        try
+        {
+            return Icon.ExtractAssociatedIcon(Application.ExecutablePath)
+                ?? (Icon)SystemIcons.Application.Clone();
+        }
+        catch
+        {
+            return (Icon)SystemIcons.Application.Clone();
+        }
     }
 }
