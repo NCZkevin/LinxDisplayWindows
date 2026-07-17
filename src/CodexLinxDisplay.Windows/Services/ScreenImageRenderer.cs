@@ -20,7 +20,10 @@ internal static class ScreenImageRenderer
     private static readonly Color SecondaryText = Color.FromArgb(148, 163, 184);
     private static readonly Color TertiaryText = Color.FromArgb(100, 116, 139);
 
-    public static Bitmap RenderUsage(UsageSnapshot? snapshot, int safeAreaHeight)
+    public static Bitmap RenderUsage(
+        UsageSnapshot? snapshot,
+        int safeAreaHeight,
+        DateTimeOffset? currentTime = null)
     {
         var safeArea = Math.Clamp(safeAreaHeight, 44, 80);
         var bitmap = NewBitmap();
@@ -42,7 +45,7 @@ internal static class ScreenImageRenderer
                 cardBounds.Right - 9, cardBounds.Top + 38);
         DrawUsage(graphics, cardBounds, snapshot);
         DrawResetCard(graphics, cardBounds, snapshot);
-        DrawAutoReset(graphics, cardBounds, snapshot);
+        DrawClock(graphics, cardBounds, snapshot, currentTime ?? DateTimeOffset.Now);
         return bitmap;
     }
 
@@ -166,16 +169,24 @@ internal static class ScreenImageRenderer
             new RectangleF(bounds.Right - 29, bounds.Top + 38, 18, 20), StringAlignment.Far);
     }
 
-    private static void DrawAutoReset(Graphics graphics, Rectangle card, UsageSnapshot? snapshot)
+    private static void DrawClock(
+        Graphics graphics,
+        Rectangle card,
+        UsageSnapshot? snapshot,
+        DateTimeOffset currentTime)
     {
         var reset = snapshot?.ResetDate?.ToLocalTime();
+        var now = currentTime.ToLocalTime();
         var bottom = card.Bottom - 15;
-        DrawText(graphics, "自动重置", 9, FontStyle.Bold, TertiaryText,
-            new RectangleF(card.Left + 9, bottom - 73, 106, 17), StringAlignment.Center);
-        DrawText(graphics, reset?.ToString("M月d日") ?? "--月--日", 17, FontStyle.Bold, PrimaryText,
-            new RectangleF(card.Left + 5, bottom - 54, 114, 24), StringAlignment.Center);
-        DrawText(graphics, reset?.ToString("HH:mm") ?? "--:--", 22, FontStyle.Bold, Accent,
-            new RectangleF(card.Left + 5, bottom - 30, 114, 30), StringAlignment.Center);
+        var resetText = reset is null ? "重置时间未知" : $"下次重置 {reset:M/d HH:mm}";
+        DrawText(graphics, resetText, 8, FontStyle.Regular, TertiaryText,
+            new RectangleF(card.Left + 7, bottom - 94, 110, 15), StringAlignment.Center);
+        DrawText(graphics, "当前时间", 9, FontStyle.Bold, TertiaryText,
+            new RectangleF(card.Left + 9, bottom - 76, 106, 17), StringAlignment.Center);
+        DrawText(graphics, now.ToString("M月d日"), 17, FontStyle.Bold, PrimaryText,
+            new RectangleF(card.Left + 5, bottom - 57, 114, 24), StringAlignment.Center);
+        DrawText(graphics, now.ToString("HH:mm"), 22, FontStyle.Bold, Accent,
+            new RectangleF(card.Left + 5, bottom - 32, 114, 30), StringAlignment.Center);
     }
 
     private static void DrawText(Graphics graphics, string text, float size, FontStyle style, Color color,

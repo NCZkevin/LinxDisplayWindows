@@ -11,6 +11,7 @@ internal sealed class MainForm : Form
     private readonly ImageApiClient _imageClient = new();
     private readonly SemaphoreSlim _syncLock = new(1, 1);
     private readonly System.Windows.Forms.Timer _refreshTimer = new();
+    private readonly System.Windows.Forms.Timer _clockTimer = new() { Interval = 1_000 };
     private readonly NotifyIcon _notifyIcon = new();
 
     private readonly ComboBox _modeCombo = new();
@@ -35,17 +36,20 @@ internal sealed class MainForm : Form
     private UsageSnapshot? _snapshot;
     private Bitmap? _customSource;
     private string? _lastUploadedHash;
+    private string? _lastRenderedMinute;
     private bool _allowExit;
     private bool _suppressEvents;
 
-    public MainForm()
+    public MainForm(bool testMode = false)
     {
         _settings = _settingsStore.Load();
         Text = "Codex 屏显 for Linx68";
         StartPosition = FormStartPosition.CenterScreen;
-        FormBorderStyle = FormBorderStyle.FixedSingle;
-        MaximizeBox = false;
-        ClientSize = new Size(680, 650);
+        AutoScaleMode = AutoScaleMode.Dpi;
+        AutoScaleDimensions = new SizeF(96F, 96F);
+        FormBorderStyle = FormBorderStyle.Sizable;
+        MinimumSize = new Size(960, 680);
+        Size = new Size(1_100, 820);
         Font = new Font("Microsoft YaHei UI", 9F);
 
         BuildInterface();
@@ -61,13 +65,15 @@ internal sealed class MainForm : Form
         trayMenu.Items.Add("退出", null, (_, _) => ExitApplication());
         _notifyIcon.Icon = SystemIcons.Application;
         _notifyIcon.Text = "Codex 屏显";
-        _notifyIcon.Visible = true;
+        _notifyIcon.Visible = !testMode;
         _notifyIcon.ContextMenuStrip = trayMenu;
         _notifyIcon.DoubleClick += (_, _) => ShowFromTray();
 
         _refreshTimer.Tick += async (_, _) => await SynchronizeCodexAsync(upload: true, forceUpload: false);
+        _clockTimer.Tick += async (_, _) => await RefreshClockIfNeededAsync();
         FormClosing += HandleFormClosing;
-        Shown += HandleShown;
+        if (!testMode)
+            Shown += HandleShown;
     }
 
     protected override void Dispose(bool disposing)
@@ -75,6 +81,7 @@ internal sealed class MainForm : Form
         if (disposing)
         {
             _refreshTimer.Dispose();
+            _clockTimer.Dispose();
             _notifyIcon.Visible = false;
             _notifyIcon.Dispose();
             _imageClient.Dispose();
@@ -90,176 +97,249 @@ internal sealed class MainForm : Form
         var root = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            Padding = new Padding(18),
+            Padding = new Padding(20),
             ColumnCount = 2,
-            RowCount = 1
+            RowCount = 1,
+            GrowStyle = TableLayoutPanelGrowStyle.FixedSize
         };
-        root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 470));
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 200));
         Controls.Add(root);
 
-        var settingsPanel = new FlowLayoutPanel
+        var settingsHost = new Panel
         {
             Dock = DockStyle.Fill,
-            FlowDirection = FlowDirection.TopDown,
-            WrapContents = false,
             AutoScroll = true,
-            Padding = new Padding(0, 0, 12, 0)
+            Padding = new Padding(0, 0, 14, 0),
+            Margin = Padding.Empty
         };
-        root.Controls.Add(settingsPanel, 0, 0);
+        root.Controls.Add(settingsHost, 0, 0);
 
-        settingsPanel.Controls.Add(BuildDisplaySection());
-        settingsPanel.Controls.Add(BuildEndpointSection());
-        settingsPanel.Controls.Add(BuildRefreshSection());
-        settingsPanel.Controls.Add(BuildLayoutSection());
-        settingsPanel.Controls.Add(BuildStatusSection());
+        var settingsStack = new TableLayoutPanel
+        {
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            ColumnCount = 1,
+            RowCount = 5,
+            Dock = DockStyle.Top,
+            Margin = Padding.Empty,
+            GrowStyle = TableLayoutPanelGrowStyle.FixedSize
+        };
+        settingsStack.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        settingsHost.Controls.Add(settingsStack);
+        settingsStack.Controls.Add(BuildDisplaySection(), 0, 0);
+        settingsStack.Controls.Add(BuildEndpointSection(), 0, 1);
+        settingsStack.Controls.Add(BuildRefreshSection(), 0, 2);
+        settingsStack.Controls.Add(BuildLayoutSection(), 0, 3);
+        settingsStack.Controls.Add(BuildStatusSection(), 0, 4);
 
-        var previewPanel = new Panel { Dock = DockStyle.Fill };
+        var previewPanel = new TableLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            ColumnCount = 1,
+            RowCount = 3,
+            Margin = new Padding(10, 0, 0, 0)
+        };
+        previewPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         root.Controls.Add(previewPanel, 1, 0);
         var previewTitle = new Label
         {
             Text = "键盘预览",
             Font = new Font(Font, FontStyle.Bold),
             AutoSize = true,
-            Location = new Point(13, 4)
+            Anchor = AnchorStyles.None,
+            Margin = new Padding(0, 0, 0, 10)
         };
-        previewPanel.Controls.Add(previewTitle);
-        _preview.Location = new Point(7, 34);
+        previewPanel.Controls.Add(previewTitle, 0, 0);
         _preview.Size = new Size(ScreenImageRenderer.Width, ScreenImageRenderer.Height);
-        _preview.SizeMode = PictureBoxSizeMode.Normal;
+        _preview.SizeMode = PictureBoxSizeMode.CenterImage;
         _preview.BackColor = Color.FromArgb(8, 11, 18);
         _preview.BorderStyle = BorderStyle.FixedSingle;
-        previewPanel.Controls.Add(_preview);
-        _previewCaption.Location = new Point(0, 473);
-        _previewCaption.Size = new Size(158, 44);
+        _preview.Anchor = AnchorStyles.None;
+        _preview.Margin = new Padding(0);
+        previewPanel.Controls.Add(_preview, 0, 1);
+        _previewCaption.AutoSize = true;
+        _previewCaption.Dock = DockStyle.Fill;
         _previewCaption.TextAlign = ContentAlignment.TopCenter;
         _previewCaption.ForeColor = SystemColors.GrayText;
-        previewPanel.Controls.Add(_previewCaption);
+        _previewCaption.Margin = new Padding(0, 10, 0, 0);
+        previewPanel.Controls.Add(_previewCaption, 0, 2);
     }
 
     private GroupBox BuildDisplaySection()
     {
-        var group = NewGroup("显示内容", 105);
-        group.Controls.Add(NewLabel("显示模式", 12, 29, 72));
+        var grid = NewGrid(2);
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 150));
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        grid.Controls.Add(NewLabel("显示模式"), 0, 0);
         _modeCombo.DropDownStyle = ComboBoxStyle.DropDownList;
         _modeCombo.Items.AddRange(["Codex 用量", "自定义图片"]);
-        _modeCombo.SetBounds(92, 25, 337, 28);
+        _modeCombo.Dock = DockStyle.Fill;
         _modeCombo.SelectedIndexChanged += async (_, _) => await ChangeModeAsync();
-        group.Controls.Add(_modeCombo);
+        grid.Controls.Add(_modeCombo, 1, 0);
 
         _chooseImageButton.Text = "选择图片…";
-        _chooseImageButton.SetBounds(12, 63, 92, 28);
+        _chooseImageButton.AutoSize = true;
+        _chooseImageButton.Anchor = AnchorStyles.Left;
         _chooseImageButton.Click += async (_, _) => await ChooseCustomImageAsync();
-        group.Controls.Add(_chooseImageButton);
-        _customImageName.SetBounds(114, 67, 315, 22);
+        grid.Controls.Add(_chooseImageButton, 0, 1);
         _customImageName.ForeColor = SystemColors.GrayText;
         _customImageName.AutoEllipsis = true;
-        group.Controls.Add(_customImageName);
-        return group;
+        _customImageName.Dock = DockStyle.Fill;
+        _customImageName.TextAlign = ContentAlignment.MiddleLeft;
+        grid.Controls.Add(_customImageName, 1, 1);
+        return NewGroup("显示内容", grid);
     }
 
     private GroupBox BuildEndpointSection()
     {
-        var group = NewGroup("设备接口", 112);
-        group.Controls.Add(NewLabel("图像 API", 12, 29, 72));
-        _endpointText.SetBounds(92, 25, 337, 27);
+        var grid = NewGrid(3);
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 150));
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        grid.Controls.Add(NewLabel("图像 API"), 0, 0);
+        _endpointText.Dock = DockStyle.Fill;
         _endpointText.PlaceholderText = "http://键盘地址/image/upload";
         _endpointText.Leave += (_, _) => SaveSettingsFromControls();
-        group.Controls.Add(_endpointText);
+        grid.Controls.Add(_endpointText, 1, 0);
+        grid.SetColumnSpan(_endpointText, 2);
 
-        var requestLabel = NewLabel("POST · image/jpeg", 92, 58, 180);
+        var requestLabel = NewLabel("POST · image/jpeg");
         requestLabel.ForeColor = SystemColors.GrayText;
-        group.Controls.Add(requestLabel);
+        grid.Controls.Add(requestLabel, 0, 1);
+        grid.SetColumnSpan(requestLabel, 2);
         _pushButton.Text = "立即推送当前内容";
-        _pushButton.SetBounds(278, 61, 151, 30);
+        _pushButton.AutoSize = true;
+        _pushButton.Anchor = AnchorStyles.Right;
         _pushButton.Click += async (_, _) => await PushCurrentAsync(true);
-        group.Controls.Add(_pushButton);
-        return group;
+        grid.Controls.Add(_pushButton, 2, 1);
+        return NewGroup("设备接口", grid);
     }
 
     private GroupBox BuildRefreshSection()
     {
-        var group = NewGroup("后台刷新", 108);
-        group.Controls.Add(NewLabel("刷新间隔", 12, 29, 72));
+        var grid = NewGrid(3);
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 150));
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        grid.Controls.Add(NewLabel("刷新间隔"), 0, 0);
         _intervalCombo.DropDownStyle = ComboBoxStyle.DropDownList;
         _intervalCombo.Items.AddRange(["1 分钟", "5 分钟", "10 分钟", "30 分钟"]);
-        _intervalCombo.SetBounds(92, 25, 150, 28);
+        _intervalCombo.Dock = DockStyle.Fill;
         _intervalCombo.SelectedIndexChanged += (_, _) =>
         {
             if (_suppressEvents) return;
             SaveSettingsFromControls();
             RestartTimer();
         };
-        group.Controls.Add(_intervalCombo);
+        grid.Controls.Add(_intervalCombo, 1, 0);
         _refreshButton.Text = "只刷新 Codex";
-        _refreshButton.SetBounds(278, 24, 151, 30);
+        _refreshButton.AutoSize = true;
+        _refreshButton.Anchor = AnchorStyles.Right;
         _refreshButton.Click += async (_, _) => await SynchronizeCodexAsync(false, false);
-        group.Controls.Add(_refreshButton);
+        grid.Controls.Add(_refreshButton, 2, 0);
 
         _startupCheck.Text = "登录 Windows 时自动启动（后台运行）";
-        _startupCheck.SetBounds(12, 67, 330, 25);
+        _startupCheck.AutoSize = true;
+        _startupCheck.Anchor = AnchorStyles.Left;
         _startupCheck.CheckedChanged += (_, _) => ChangeStartupSetting();
-        group.Controls.Add(_startupCheck);
-        return group;
+        grid.Controls.Add(_startupCheck, 0, 1);
+        grid.SetColumnSpan(_startupCheck, 3);
+        return NewGroup("后台刷新", grid);
     }
 
     private GroupBox BuildLayoutSection()
     {
-        var group = NewGroup("屏幕布局", 112);
-        group.Controls.Add(NewLabel("顶部安全区", 12, 29, 80));
+        var grid = NewGrid(3);
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 150));
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        grid.Controls.Add(NewLabel("顶部安全区"), 0, 0);
         _safeAreaInput.Minimum = 44;
         _safeAreaInput.Maximum = 80;
-        _safeAreaInput.SetBounds(103, 25, 72, 28);
+        _safeAreaInput.Width = 80;
+        _safeAreaInput.Anchor = AnchorStyles.Left;
         _safeAreaInput.ValueChanged += (_, _) => HandleRenderSettingChanged();
-        group.Controls.Add(_safeAreaInput);
-        group.Controls.Add(NewLabel("px", 179, 29, 25));
+        grid.Controls.Add(_safeAreaInput, 1, 0);
+        grid.Controls.Add(NewLabel("px"), 2, 0);
 
-        group.Controls.Add(NewLabel("JPEG 质量", 12, 72, 80));
+        grid.Controls.Add(NewLabel("JPEG 质量"), 0, 1);
         _qualitySlider.Minimum = 50;
         _qualitySlider.Maximum = 100;
         _qualitySlider.TickFrequency = 10;
-        _qualitySlider.SetBounds(92, 61, 280, 40);
+        _qualitySlider.Dock = DockStyle.Fill;
+        _qualitySlider.AutoSize = true;
         _qualitySlider.ValueChanged += (_, _) => HandleRenderSettingChanged();
-        group.Controls.Add(_qualitySlider);
-        _qualityValue.SetBounds(375, 71, 54, 22);
+        grid.Controls.Add(_qualitySlider, 1, 1);
+        _qualityValue.AutoSize = true;
         _qualityValue.TextAlign = ContentAlignment.MiddleRight;
-        group.Controls.Add(_qualityValue);
-        return group;
+        _qualityValue.Anchor = AnchorStyles.Right;
+        grid.Controls.Add(_qualityValue, 2, 1);
+        return NewGroup("屏幕布局", grid);
     }
 
     private GroupBox BuildStatusSection()
     {
-        var group = NewGroup("运行状态", 142);
-        group.Controls.Add(NewLabel("状态", 12, 27, 98));
-        _statusValue.SetBounds(116, 27, 313, 20);
-        group.Controls.Add(_statusValue);
-        group.Controls.Add(NewLabel("上次 Codex 刷新", 12, 52, 105));
-        _lastRefreshValue.SetBounds(116, 52, 313, 20);
-        group.Controls.Add(_lastRefreshValue);
-        group.Controls.Add(NewLabel("上次推送", 12, 77, 98));
-        _lastUploadValue.SetBounds(116, 77, 313, 20);
-        group.Controls.Add(_lastUploadValue);
-        _errorValue.SetBounds(12, 103, 417, 31);
+        var grid = NewGrid(2);
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 190));
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        grid.Controls.Add(NewLabel("状态"), 0, 0);
+        _statusValue.Dock = DockStyle.Fill;
+        _statusValue.TextAlign = ContentAlignment.MiddleLeft;
+        grid.Controls.Add(_statusValue, 1, 0);
+        grid.Controls.Add(NewLabel("上次 Codex 刷新"), 0, 1);
+        _lastRefreshValue.Dock = DockStyle.Fill;
+        _lastRefreshValue.TextAlign = ContentAlignment.MiddleLeft;
+        grid.Controls.Add(_lastRefreshValue, 1, 1);
+        grid.Controls.Add(NewLabel("上次推送"), 0, 2);
+        _lastUploadValue.Dock = DockStyle.Fill;
+        _lastUploadValue.TextAlign = ContentAlignment.MiddleLeft;
+        grid.Controls.Add(_lastUploadValue, 1, 2);
         _errorValue.ForeColor = Color.Firebrick;
         _errorValue.AutoEllipsis = true;
-        group.Controls.Add(_errorValue);
+        _errorValue.AutoSize = true;
+        _errorValue.Dock = DockStyle.Fill;
+        grid.Controls.Add(_errorValue, 0, 3);
+        grid.SetColumnSpan(_errorValue, 2);
+        return NewGroup("运行状态", grid);
+    }
+
+    private static GroupBox NewGroup(string title, Control content)
+    {
+        var group = new GroupBox
+        {
+            Text = title,
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Padding = new Padding(12, 10, 12, 12),
+            Margin = new Padding(0, 0, 0, 12)
+        };
+        content.Dock = DockStyle.Top;
+        group.Controls.Add(content);
         return group;
     }
 
-    private GroupBox NewGroup(string title, int height) => new()
+    private static TableLayoutPanel NewGrid(int columns) => new()
     {
-        Text = title,
-        Width = 445,
-        Height = height,
-        Margin = new Padding(0, 0, 0, 9)
+        ColumnCount = columns,
+        AutoSize = true,
+        AutoSizeMode = AutoSizeMode.GrowAndShrink,
+        Dock = DockStyle.Top,
+        Padding = Padding.Empty,
+        Margin = Padding.Empty,
+        GrowStyle = TableLayoutPanelGrowStyle.AddRows
     };
 
-    private static Label NewLabel(string text, int x, int y, int width) => new()
+    private static Label NewLabel(string text) => new()
     {
         Text = text,
-        Location = new Point(x, y),
-        Size = new Size(width, 22),
-        TextAlign = ContentAlignment.MiddleLeft
+        AutoSize = true,
+        Anchor = AnchorStyles.Left,
+        TextAlign = ContentAlignment.MiddleLeft,
+        Margin = new Padding(3, 6, 3, 6)
     };
 
     private void LoadSettingsIntoControls()
@@ -304,6 +384,7 @@ internal sealed class MainForm : Form
         if (Environment.GetCommandLineArgs().Any(value => value.Equals("--background", StringComparison.OrdinalIgnoreCase)))
             Hide();
         RestartTimer();
+        _clockTimer.Start();
         if (_settings.DisplayMode == DisplayMode.Codex)
             await SynchronizeCodexAsync(upload: true, forceUpload: true);
         else if (_customSource is not null)
@@ -459,6 +540,28 @@ internal sealed class MainForm : Form
         SetStatus($"推送成功 · HTTP {statusCode}");
     }
 
+    private async Task RefreshClockIfNeededAsync()
+    {
+        if (_settings.DisplayMode != DisplayMode.Codex || _snapshot is null) return;
+        var currentMinute = DateTime.Now.ToString("yyyyMMddHHmm");
+        if (currentMinute == _lastRenderedMinute) return;
+        if (!await _syncLock.WaitAsync(0)) return;
+
+        try
+        {
+            UpdatePreview();
+            await UploadPreviewAsync(forceUpload: false, unchangedStatus: "时间未变化");
+        }
+        catch (Exception error)
+        {
+            SetStatus("时钟推送失败", error.Message);
+        }
+        finally
+        {
+            _syncLock.Release();
+        }
+    }
+
     private void UpdatePreview()
     {
         try
@@ -478,8 +581,10 @@ internal sealed class MainForm : Form
             }
             else
             {
+                var now = DateTimeOffset.Now;
                 next = ScreenImageRenderer.RenderUsage(_snapshot ?? UsageSnapshot.Sample,
-                    _settings.SafeAreaHeight);
+                    _settings.SafeAreaHeight, now);
+                _lastRenderedMinute = now.ToString("yyyyMMddHHmm");
                 _previewCaption.Text = $"Codex 用量\r\n顶部 {_settings.SafeAreaHeight}px 留空";
             }
 

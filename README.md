@@ -9,6 +9,7 @@
 - 支持自定义图片，自动居中裁切，并为键盘自身的天气、Wi-Fi、电量状态栏保留顶部安全区。
 - 可调整顶部安全区（44–80px）和 JPEG 质量（50%–100%）。
 - 关闭窗口后继续在系统托盘运行，支持登录 Windows 时自动启动。
+- 卡片明确区分“当前时间”和“下次重置”，当前时间每分钟自动推送，不会额外启动 Codex 进程。
 - 不需要键盘厂商 SDK，也不需要云端中转服务。
 
 ## 运行
@@ -53,11 +54,22 @@ Codex 读取依赖本机的 `codex.exe`。程序会先读取 `CODEX_CLI_PATH` �
 artifacts\windows-x64\CodexLinxDisplay.exe
 ```
 
-目标电脑无需另行安装 .NET Runtime。也可指定 ARM64：
+自包含版本启用了单文件压缩，目标电脑无需另行安装 .NET Runtime。也可指定 ARM64：
+
+当前 x64 构建约为 `63MB`；未压缩版本原先约为 `154MB`。
 
 ```powershell
 .\scripts\build.ps1 -Runtime win-arm64
 ```
+
+如果目标电脑已经安装 [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0)，可以生成体积最小的框架依赖版本：
+
+```powershell
+.\scripts\build.ps1 -FrameworkDependent
+```
+
+输出位于 `artifacts\windows-x64-framework-dependent`。它本身很小，但离开已安装的 .NET Desktop Runtime 无法运行。
+当前 x64 框架依赖构建约为 `0.21MB`。
 
 ## 验证
 

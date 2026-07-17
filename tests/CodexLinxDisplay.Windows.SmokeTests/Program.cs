@@ -2,11 +2,17 @@ using System.Drawing.Imaging;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using CodexLinxDisplay.Windows;
 using CodexLinxDisplay.Windows.Models;
 using CodexLinxDisplay.Windows.Services;
 
 await TestRendererAsync();
 await TestImageApiAsync();
+
+var snapshotArgument = args.FirstOrDefault(value =>
+    value.StartsWith("--ui-snapshot=", StringComparison.OrdinalIgnoreCase));
+if (snapshotArgument is not null)
+    TestUserInterface(snapshotArgument[(snapshotArgument.IndexOf('=') + 1)..]);
 
 if (args.Contains("--codex", StringComparer.OrdinalIgnoreCase))
 {
@@ -19,7 +25,8 @@ Console.WriteLine("All Windows smoke tests passed.");
 
 static Task TestRendererAsync()
 {
-    using var usage = ScreenImageRenderer.RenderUsage(UsageSnapshot.Sample, 56);
+    var renderedAt = new DateTimeOffset(2026, 7, 18, 2, 14, 0, TimeSpan.FromHours(8));
+    using var usage = ScreenImageRenderer.RenderUsage(UsageSnapshot.Sample, 56, renderedAt);
     Assert(usage.Width == 142 && usage.Height == 428, "Usage image dimensions are invalid.");
     var usageJpeg = ScreenImageRenderer.EncodeJpeg(usage, 90);
     Assert(usageJpeg.Length is > 0 and <= ScreenImageRenderer.MaximumFileSize,
@@ -27,6 +34,11 @@ static Task TestRendererAsync()
     using (var stream = new MemoryStream(usageJpeg))
     using (var decoded = Image.FromStream(stream))
         Assert(decoded.RawFormat.Guid == ImageFormat.Jpeg.Guid, "Usage image is not JPEG.");
+
+    using var nextMinute = ScreenImageRenderer.RenderUsage(
+        UsageSnapshot.Sample, 56, renderedAt.AddMinutes(1));
+    var nextMinuteJpeg = ScreenImageRenderer.EncodeJpeg(nextMinute, 90);
+    Assert(!usageJpeg.SequenceEqual(nextMinuteJpeg), "Current time did not change the rendered card.");
 
     using var source = new Bitmap(640, 360);
     using (var graphics = Graphics.FromImage(source)) graphics.Clear(Color.DodgerBlue);
@@ -101,6 +113,36 @@ static async Task TestImageApiAsync()
         "Image API content type is invalid.");
     Assert(receivedBody.SequenceEqual(payload), "Image API payload is invalid.");
     Console.WriteLine("Image API: OK (raw image/jpeg POST)");
+}
+
+static void TestUserInterface(string outputPath)
+{
+    Exception? failure = null;
+    var thread = new Thread(() =>
+    {
+        try
+        {
+            Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
+            using var form = new MainForm(testMode: true);
+            form.Show();
+            Application.DoEvents();
+            form.PerformLayout();
+            using var bitmap = new Bitmap(form.ClientSize.Width, form.ClientSize.Height);
+            form.DrawToBitmap(bitmap, new Rectangle(Point.Empty, form.ClientSize));
+            form.Hide();
+            Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(outputPath))!);
+            bitmap.Save(outputPath, ImageFormat.Png);
+        }
+        catch (Exception error)
+        {
+            failure = error;
+        }
+    });
+    thread.SetApartmentState(ApartmentState.STA);
+    thread.Start();
+    thread.Join();
+    if (failure is not null) throw new InvalidOperationException("UI snapshot failed.", failure);
+    Console.WriteLine($"User interface: OK ({outputPath})");
 }
 
 static void Assert(bool condition, string message)
