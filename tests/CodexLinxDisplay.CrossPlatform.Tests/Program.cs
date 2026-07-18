@@ -29,6 +29,19 @@ checks.Add(("Pomodoro transitions", () =>
     Assert(snapshot.CompletedFocusSessions == 1, "完成次数不正确");
 }));
 
+checks.Add(("Codex automatic sync schedule", () =>
+{
+    var now = new DateTimeOffset(2026, 7, 18, 2, 14, 30, TimeSpan.FromHours(8));
+    Assert(AutomaticSyncPlanner.ForCodex(now, DateTimeOffset.MinValue, DateTimeOffset.MinValue, 300)
+           == AutomaticSyncAction.RefreshAndPush, "首次启动没有安排刷新并推送");
+    Assert(AutomaticSyncPlanner.ForCodex(now, now.AddMinutes(-5), now.AddSeconds(-10), 300)
+           == AutomaticSyncAction.RefreshAndPush, "刷新周期到期没有安排刷新并推送");
+    Assert(AutomaticSyncPlanner.ForCodex(now, now.AddMinutes(-1), now.AddMinutes(-1), 300)
+           == AutomaticSyncAction.Push, "分钟变化没有安排时钟推送");
+    Assert(AutomaticSyncPlanner.ForCodex(now, now.AddMinutes(-1), now.AddSeconds(-10), 300)
+           == AutomaticSyncAction.None, "同一分钟内发生了重复推送");
+}));
+
 checks.Add(("Platform system monitor", () =>
 {
     var monitor = PlatformServiceFactory.CreateSystemMonitor();

@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System.Security.Cryptography;
 using System.Windows.Input;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
@@ -26,7 +27,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private string _lastPush = "最后推送：尚未推送";
     private bool _busy;
     private DateTimeOffset _lastCodexRefresh = DateTimeOffset.MinValue;
-    private DateTimeOffset _lastDynamicPush = DateTimeOffset.MinValue;
+    private DateTimeOffset _lastPushAttempt = DateTimeOffset.MinValue;
+    private string? _lastUploadedHash;
 
     public MainViewModel()
     {
@@ -49,8 +51,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             new("琥珀终端", CardTheme.AmberTerminal)
         ];
 
-        RefreshCommand = new AsyncCommand(RefreshAsync);
-        PushCommand = new AsyncCommand(() => PushAsync(true));
+        RefreshCommand = new AsyncCommand(() => RefreshCodexAsync(upload: false, forceUpload: false));
+        PushCommand = new AsyncCommand(PushCurrentAsync);
         PomodoroToggleCommand = new RelayCommand(TogglePomodoro);
         PomodoroSkipCommand = new RelayCommand(SkipPomodoro);
         PomodoroResetCommand = new RelayCommand(ResetPomodoro);
@@ -191,7 +193,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     {
         RenderPreview();
         if (_settings.DisplayMode == DisplayMode.Codex)
-            await RefreshAsync();
+            await RefreshCodexAsync(upload: true, forceUpload: false);
         else if (_settings.DisplayMode == DisplayMode.SystemMonitor)
         {
             _systemMonitor.Sample();
@@ -201,15 +203,16 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
-    private async Task RefreshAsync()
+    private async Task RefreshCodexAsync(bool upload, bool forceUpload)
     {
         if (_busy) return;
         _busy = true;
         try
         {
-            Status = "正在刷新…";
+            Status = upload ? "正在刷新并推送…" : "正在刷新…";
             if (_settings.DisplayMode == DisplayMode.Codex)
             {
+                _lastCodexRefresh = DateTimeOffset.Now;
                 _usage = await _codex.FetchAsync();
                 _lastCodexRefresh = DateTimeOffset.Now;
             }
@@ -217,7 +220,10 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
                 _system = _systemMonitor.Sample();
             RenderPreview();
             LastRefresh = $"最后刷新：{DateTime.Now:M月d日 HH:mm:ss}";
-            Status = "数据已刷新";
+            if (upload)
+                await UploadRenderedAsync(forceUpload);
+            else
+                Status = "数据已刷新";
         }
         catch (Exception error)
         {
@@ -227,21 +233,42 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         finally { _busy = false; }
     }
 
+    private async Task PushCurrentAsync()
+    {
+        if (_settings.DisplayMode == DisplayMode.Codex)
+            await RefreshCodexAsync(upload: true, forceUpload: true);
+        else
+            await PushAsync(force: true);
+    }
+
     private async Task PushAsync(bool force)
     {
         if (_busy) return;
         _busy = true;
         try
         {
-            var jpeg = RenderBytes();
-            Status = "正在推送到键盘…";
-            var statusCode = await _imageApi.UploadAsync(jpeg, _settings.Endpoint);
-            _lastDynamicPush = DateTimeOffset.Now;
-            LastPush = $"最后推送：{DateTime.Now:M月d日 HH:mm:ss}";
-            Status = $"推送成功（HTTP {statusCode}）";
+            await UploadRenderedAsync(force);
         }
         catch (Exception error) { Status = error.Message; }
         finally { _busy = false; }
+    }
+
+    private async Task UploadRenderedAsync(bool force)
+    {
+        var jpeg = RenderBytes();
+        var hash = Convert.ToHexString(SHA256.HashData(jpeg));
+        _lastPushAttempt = DateTimeOffset.Now;
+        if (!force && hash == _lastUploadedHash)
+        {
+            Status = "画面未变化，无需重复推送";
+            return;
+        }
+
+        Status = "正在推送到键盘…";
+        var statusCode = await _imageApi.UploadAsync(jpeg, _settings.Endpoint);
+        _lastUploadedHash = hash;
+        LastPush = $"最后推送：{DateTime.Now:M月d日 HH:mm:ss}";
+        Status = $"推送成功（HTTP {statusCode}）";
     }
 
     private async Task TickAsync()
@@ -249,10 +276,16 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         var now = DateTimeOffset.Now;
         if (_pomodoro.Tick(now)) SavePomodoro();
 
-        if (_settings.DisplayMode == DisplayMode.Codex
-            && now - _lastCodexRefresh >= TimeSpan.FromSeconds(_settings.CodexRefreshSeconds))
+        if (_settings.DisplayMode == DisplayMode.Codex)
         {
-            await RefreshAsync();
+            var action = AutomaticSyncPlanner.ForCodex(
+                now, _lastCodexRefresh, _lastPushAttempt, _settings.CodexRefreshSeconds);
+            if (action == AutomaticSyncAction.RefreshAndPush)
+                await RefreshCodexAsync(upload: true, forceUpload: false);
+            else if (action == AutomaticSyncAction.Push)
+                await PushAsync(force: false);
+            else
+                RenderPreview();
             return;
         }
 
@@ -261,10 +294,9 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         if (_settings.DisplayMode is DisplayMode.Pomodoro or DisplayMode.SystemMonitor)
         {
             RenderPreview();
-            if (now - _lastDynamicPush >= TimeSpan.FromSeconds(_settings.DynamicUploadSeconds))
+            if (now - _lastPushAttempt >= TimeSpan.FromSeconds(_settings.DynamicUploadSeconds))
                 await PushAsync(false);
         }
-        if (_settings.DisplayMode == DisplayMode.Codex) RenderPreview();
     }
 
     private void TogglePomodoro()
