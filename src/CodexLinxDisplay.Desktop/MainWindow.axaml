@@ -35,7 +35,7 @@
               <TextBlock Classes="sectionTitle" Text="番茄钟" />
               <Grid ColumnDefinitions="110,*" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="9">
                 <TextBlock Grid.Row="0" Text="当前任务" VerticalAlignment="Center" />
-                <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding TaskName}" />
+                <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding TaskName}" MaxLength="24" />
                 <TextBlock Grid.Row="1" Text="专注时长" VerticalAlignment="Center" />
                 <NumericUpDown Grid.Row="1" Grid.Column="1" Value="{Binding FocusMinutes}" Minimum="1" Maximum="120" FormatString="0 分钟" />
                 <TextBlock Grid.Row="2" Text="短休息" VerticalAlignment="Center" />
@@ -48,6 +48,15 @@
                 <Button Content="跳过" Command="{Binding PomodoroSkipCommand}" />
                 <Button Content="重置" Command="{Binding PomodoroResetCommand}" />
               </StackPanel>
+              <TextBlock Text="{Binding PomodoroStatus}" Opacity="0.68" />
+            </StackPanel>
+          </Border>
+
+          <Border Classes="section" IsVisible="{Binding IsSystemMode}">
+            <StackPanel Spacing="8">
+              <TextBlock Classes="sectionTitle" Text="系统监控" />
+              <TextBlock Text="{Binding SystemStatus}" TextWrapping="Wrap" />
+              <TextBlock Text="CPU、内存与网络速率会按动态推送周期自动更新。" Opacity="0.62" />
             </StackPanel>
           </Border>
 
@@ -62,11 +71,13 @@
           <Border Classes="section">
             <StackPanel Spacing="10">
               <TextBlock Classes="sectionTitle" Text="键盘连接" />
-              <Grid ColumnDefinitions="110,*" RowDefinitions="Auto,Auto" RowSpacing="10">
+              <Grid ColumnDefinitions="110,*" RowDefinitions="Auto,Auto,Auto" RowSpacing="10">
                 <TextBlock Text="图像 API" VerticalAlignment="Center" />
                 <TextBox Grid.Column="1" Text="{Binding Endpoint}" />
-                <TextBlock Grid.Row="1" Text="动态推送" VerticalAlignment="Center" />
-                <NumericUpDown Grid.Row="1" Grid.Column="1" Value="{Binding DynamicUploadSeconds}" Minimum="2" Maximum="60" FormatString="0 秒" />
+                <TextBlock Grid.Row="1" Text="Codex 刷新" VerticalAlignment="Center" IsVisible="{Binding IsCodexMode}" />
+                <ComboBox Grid.Row="1" Grid.Column="1" ItemsSource="{Binding RefreshIntervals}" SelectedItem="{Binding SelectedRefreshInterval}" IsVisible="{Binding IsCodexMode}" />
+                <TextBlock Grid.Row="2" Text="动态推送" VerticalAlignment="Center" IsVisible="{Binding IsDynamicMode}" />
+                <NumericUpDown Grid.Row="2" Grid.Column="1" Value="{Binding DynamicUploadSeconds}" Minimum="2" Maximum="60" FormatString="0 秒" IsVisible="{Binding IsDynamicMode}" />
               </Grid>
               <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
                 <Button Content="刷新数据" Command="{Binding RefreshCommand}" />
@@ -78,11 +89,12 @@
           <Border Classes="section">
             <StackPanel Spacing="10">
               <TextBlock Classes="sectionTitle" Text="屏幕布局" />
-              <Grid ColumnDefinitions="110,*" RowDefinitions="Auto,Auto" RowSpacing="10">
+              <Grid ColumnDefinitions="110,*,44" RowDefinitions="Auto,Auto" RowSpacing="10">
                 <TextBlock Text="顶部安全区" VerticalAlignment="Center" />
-                <NumericUpDown Grid.Column="1" Value="{Binding SafeAreaHeight}" Minimum="44" Maximum="80" FormatString="0 px" />
+                <NumericUpDown Grid.Column="1" Grid.ColumnSpan="2" Value="{Binding SafeAreaHeight}" Minimum="44" Maximum="80" FormatString="0 px" />
                 <TextBlock Grid.Row="1" Text="JPEG 质量" VerticalAlignment="Center" />
                 <Slider Grid.Row="1" Grid.Column="1" Value="{Binding JpegQuality}" Minimum="50" Maximum="100" TickFrequency="1" />
+                <TextBlock Grid.Row="1" Grid.Column="2" Text="{Binding JpegQualityText}" HorizontalAlignment="Right" VerticalAlignment="Center" />
               </Grid>
               <CheckBox Content="登录系统时自动启动" IsChecked="{Binding StartWithSystem}" />
             </StackPanel>

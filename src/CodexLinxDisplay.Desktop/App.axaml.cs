@@ -29,6 +29,13 @@ public sealed partial class App : Application
     private void TrayIconClicked(object? sender, EventArgs args) => ShowMainWindow();
     private void OpenWindowClick(object? sender, EventArgs args) => ShowMainWindow();
 
+    private void PushClick(object? sender, EventArgs args)
+    {
+        if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop
+            && desktop.MainWindow is MainWindow window)
+            window.PushCurrent();
+    }
+
     private void ExitClick(object? sender, EventArgs args)
     {
         IsExiting = true;

@@ -50,12 +50,19 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             new("霓虹紫", CardTheme.NeonPurple),
             new("琥珀终端", CardTheme.AmberTerminal)
         ];
+        RefreshIntervals =
+        [
+            new("1 分钟", 60),
+            new("5 分钟", 300),
+            new("10 分钟", 600),
+            new("30 分钟", 1800)
+        ];
 
         RefreshCommand = new AsyncCommand(() => RefreshCodexAsync(upload: false, forceUpload: false));
         PushCommand = new AsyncCommand(PushCurrentAsync);
-        PomodoroToggleCommand = new RelayCommand(TogglePomodoro);
-        PomodoroSkipCommand = new RelayCommand(SkipPomodoro);
-        PomodoroResetCommand = new RelayCommand(ResetPomodoro);
+        PomodoroToggleCommand = new AsyncCommand(TogglePomodoroAsync);
+        PomodoroSkipCommand = new AsyncCommand(SkipPomodoroAsync);
+        PomodoroResetCommand = new AsyncCommand(ResetPomodoroAsync);
 
         _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _timer.Tick += async (_, _) => await TickAsync();
@@ -66,6 +73,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
     public IReadOnlyList<Choice<DisplayMode>> Modes { get; }
     public IReadOnlyList<Choice<CardTheme>> Themes { get; }
+    public IReadOnlyList<Choice<int>> RefreshIntervals { get; }
     public ICommand RefreshCommand { get; }
     public ICommand PushCommand { get; }
     public ICommand PomodoroToggleCommand { get; }
@@ -104,6 +112,18 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         set { if (_settings.Endpoint == value) return; _settings.Endpoint = value; SaveSettings(); OnPropertyChanged(); }
     }
 
+    public Choice<int> SelectedRefreshInterval
+    {
+        get => RefreshIntervals.First(x => x.Value == _settings.CodexRefreshSeconds);
+        set
+        {
+            if (_settings.CodexRefreshSeconds == value.Value) return;
+            _settings.CodexRefreshSeconds = value.Value;
+            SaveSettings();
+            OnPropertyChanged();
+        }
+    }
+
     public int SafeAreaHeight
     {
         get => _settings.SafeAreaHeight;
@@ -113,7 +133,16 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     public int JpegQuality
     {
         get => _settings.JpegQuality;
-        set { value = Math.Clamp(value, 50, 100); if (_settings.JpegQuality == value) return; _settings.JpegQuality = value; SaveSettings(); OnPropertyChanged(); RenderPreview(); }
+        set
+        {
+            value = Math.Clamp(value, 50, 100);
+            if (_settings.JpegQuality == value) return;
+            _settings.JpegQuality = value;
+            SaveSettings();
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(JpegQualityText));
+            RenderPreview();
+        }
     }
 
     public int DynamicUploadSeconds
@@ -169,11 +198,38 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     public string LastRefresh { get => _lastRefresh; private set => Set(ref _lastRefresh, value); }
     public string LastPush { get => _lastPush; private set => Set(ref _lastPush, value); }
     public string CustomImageName => string.IsNullOrWhiteSpace(_settings.CustomImageName) ? "尚未选择图片" : _settings.CustomImageName;
+    public string JpegQualityText => $"{JpegQuality}%";
     public bool IsCodexMode => _settings.DisplayMode == DisplayMode.Codex;
     public bool IsPomodoroMode => _settings.DisplayMode == DisplayMode.Pomodoro;
     public bool IsSystemMode => _settings.DisplayMode == DisplayMode.SystemMonitor;
     public bool IsCustomMode => _settings.DisplayMode == DisplayMode.CustomImage;
-    public string PomodoroAction => _pomodoro.GetSnapshot(DateTimeOffset.Now).IsRunning ? "暂停" : "开始 / 继续";
+    public bool IsDynamicMode => IsPomodoroMode || IsSystemMode;
+    public string PomodoroAction
+    {
+        get
+        {
+            var snapshot = _pomodoro.GetSnapshot(DateTimeOffset.Now);
+            return snapshot.IsRunning ? "暂停" : snapshot.IsPaused ? "继续" : "开始";
+        }
+    }
+    public string PomodoroStatus
+    {
+        get
+        {
+            var snapshot = _pomodoro.GetSnapshot(DateTimeOffset.Now);
+            var phase = snapshot.Phase switch
+            {
+                PomodoroPhase.Focus => "专注中",
+                PomodoroPhase.ShortBreak => "短休息",
+                PomodoroPhase.LongBreak => "长休息",
+                PomodoroPhase.Paused => "已暂停",
+                _ => "尚未开始"
+            };
+            return $"{phase} · {snapshot.Remaining:mm\\:ss} · 已完成 {snapshot.CompletedFocusSessions} 轮";
+        }
+    }
+    public string SystemStatus =>
+        $"CPU {_system.CpuPercent:0}% · 内存 {_system.MemoryPercent:0}% · ↓ {ScreenRenderer.FormatRate(_system.DownloadBytesPerSecond)} · ↑ {ScreenRenderer.FormatRate(_system.UploadBytesPerSecond)}";
 
     public async Task SetCustomImageAsync(string path)
     {
@@ -199,8 +255,14 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             _systemMonitor.Sample();
             await Task.Delay(150);
             _system = _systemMonitor.Sample();
+            OnPropertyChanged(nameof(SystemStatus));
             RenderPreview();
+            await PushAsync(true);
         }
+        else if (_settings.DisplayMode == DisplayMode.Pomodoro)
+            await PushAsync(true);
+        else if (_settings.DisplayMode == DisplayMode.CustomImage && File.Exists(_settings.CustomImagePath))
+            await PushAsync(true);
     }
 
     private async Task RefreshCodexAsync(bool upload, bool forceUpload)
@@ -217,7 +279,10 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
                 _lastCodexRefresh = DateTimeOffset.Now;
             }
             else if (_settings.DisplayMode == DisplayMode.SystemMonitor)
+            {
                 _system = _systemMonitor.Sample();
+                OnPropertyChanged(nameof(SystemStatus));
+            }
             RenderPreview();
             LastRefresh = $"最后刷新：{DateTime.Now:M月d日 HH:mm:ss}";
             if (upload)
@@ -290,27 +355,54 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         }
 
         if (_settings.DisplayMode == DisplayMode.SystemMonitor)
+        {
             _system = _systemMonitor.Sample(now);
+            OnPropertyChanged(nameof(SystemStatus));
+        }
         if (_settings.DisplayMode is DisplayMode.Pomodoro or DisplayMode.SystemMonitor)
         {
+            if (_settings.DisplayMode == DisplayMode.Pomodoro)
+            {
+                OnPropertyChanged(nameof(PomodoroAction));
+                OnPropertyChanged(nameof(PomodoroStatus));
+            }
             RenderPreview();
             if (now - _lastPushAttempt >= TimeSpan.FromSeconds(_settings.DynamicUploadSeconds))
                 await PushAsync(false);
         }
     }
 
-    private void TogglePomodoro()
+    private async Task TogglePomodoroAsync()
     {
         var now = DateTimeOffset.Now;
         var snapshot = _pomodoro.GetSnapshot(now);
         if (snapshot.IsRunning) _pomodoro.Pause(now); else _pomodoro.StartOrResume(now);
         SavePomodoro();
         OnPropertyChanged(nameof(PomodoroAction));
+        OnPropertyChanged(nameof(PomodoroStatus));
         RenderPreview();
+        await PushAsync(true);
     }
 
-    private void SkipPomodoro() { _pomodoro.Skip(DateTimeOffset.Now); SavePomodoro(); OnPropertyChanged(nameof(PomodoroAction)); RenderPreview(); }
-    private void ResetPomodoro() { _pomodoro.Reset(); SavePomodoro(); OnPropertyChanged(nameof(PomodoroAction)); RenderPreview(); }
+    private async Task SkipPomodoroAsync()
+    {
+        _pomodoro.Skip(DateTimeOffset.Now);
+        SavePomodoro();
+        OnPropertyChanged(nameof(PomodoroAction));
+        OnPropertyChanged(nameof(PomodoroStatus));
+        RenderPreview();
+        await PushAsync(true);
+    }
+
+    private async Task ResetPomodoroAsync()
+    {
+        _pomodoro.Reset();
+        SavePomodoro();
+        OnPropertyChanged(nameof(PomodoroAction));
+        OnPropertyChanged(nameof(PomodoroStatus));
+        RenderPreview();
+        await PushAsync(true);
+    }
 
     private void RenderPreview()
     {
@@ -344,6 +436,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(IsPomodoroMode));
         OnPropertyChanged(nameof(IsSystemMode));
         OnPropertyChanged(nameof(IsCustomMode));
+        OnPropertyChanged(nameof(IsDynamicMode));
     }
 
     private bool Set<T>(ref T field, T value, [CallerMemberName] string? name = null)

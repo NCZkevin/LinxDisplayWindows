@@ -34,15 +34,23 @@ jobs:
           - os: windows-latest
             rid: win-x64
             asset: Windows-x64
+            single_file: true
+            extract_native: true
           - os: macos-latest
             rid: osx-arm64
             asset: macOS-AppleSilicon
+            single_file: false
+            extract_native: false
           - os: macos-latest
             rid: osx-x64
             asset: macOS-Intel
+            single_file: false
+            extract_native: false
           - os: ubuntu-latest
             rid: linux-x64
             asset: Linux-x64
+            single_file: true
+            extract_native: true
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
 
@@ -61,9 +69,9 @@ jobs:
           --configuration Release
           --runtime ${{ matrix.rid }}
           --self-contained true
-          -p:PublishSingleFile=true
+          -p:PublishSingleFile=${{ matrix.single_file }}
           -p:EnableCompressionInSingleFile=true
-          -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:IncludeNativeLibrariesForSelfExtract=${{ matrix.extract_native }}
           -p:DebugType=None
           -p:DebugSymbols=false
           --output .release/publish
@@ -83,32 +91,12 @@ jobs:
         if: runner.os == 'macOS'
         shell: bash
         run: |
-          set -euo pipefail
-          app=".release/CodexLinxDisplay.app"
-          mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources" .release/icon.iconset
-          cp -R .release/publish/. "$app/Contents/MacOS/"
-          chmod +x "$app/Contents/MacOS/CodexLinxDisplay"
-          for size in 16 32 128 256 512; do
-            sips -z "$size" "$size" src/CodexLinxDisplay.Windows/Assets/app-icon.png --out ".release/icon.iconset/icon_${size}x${size}.png" >/dev/null
-            double=$((size * 2))
-            sips -z "$double" "$double" src/CodexLinxDisplay.Windows/Assets/app-icon.png --out ".release/icon.iconset/icon_${size}x${size}@2x.png" >/dev/null
-          done
-          iconutil -c icns .release/icon.iconset -o "$app/Contents/Resources/app.icns"
-          cat > "$app/Contents/Info.plist" <<'PLIST'
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "https://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0"><dict>
-            <key>CFBundleName</key><string>CodexLinxDisplay</string>
-            <key>CFBundleDisplayName</key><string>Codex 屏显 for Linx68</string>
-            <key>CFBundleIdentifier</key><string>com.codexlinxdisplay.desktop</string>
-            <key>CFBundleVersion</key><string>${{ needs.verify.outputs.version }}</string>
-            <key>CFBundleShortVersionString</key><string>${{ needs.verify.outputs.version }}</string>
-            <key>CFBundleExecutable</key><string>CodexLinxDisplay</string>
-            <key>CFBundleIconFile</key><string>app.icns</string>
-            <key>NSHighResolutionCapable</key><true/>
-          </dict></plist>
-          PLIST
-          tar -C .release -czf ".release/CodexLinxDisplay-${{ matrix.asset }}-v${{ needs.verify.outputs.version }}.tar.gz" CodexLinxDisplay.app
+          bash scripts/package-macos.sh \
+            .release/publish \
+            .release \
+            "${{ matrix.asset }}" \
+            "${{ needs.verify.outputs.version }}" \
+            "${{ matrix.rid }}"
 
       - name: Package Linux
         if: runner.os == 'Linux'

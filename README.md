@@ -35,6 +35,28 @@
 
 预览版采用自包含发布，无需预装 .NET。macOS 预览包暂未使用 Apple Developer ID 签名，首次打开可能需要在“系统设置 → 隐私与安全性”中手动允许。
 
+### macOS 安装
+
+1. 在“关于本机”确认芯片类型：M1/M2/M3/M4/M5 选择 `AppleSilicon`，Intel 处理器选择 `Intel`。
+2. 下载对应的 `.zip` 并解压，得到 `CodexLinxDisplay.app`。
+3. 将 `.app` 拖入“应用程序”后打开。当前预览版尚未使用 Apple Developer ID 公证；若系统拦截，请按住 Control 点击应用并选择“打开”，或在“系统设置 → 隐私与安全性”中允许。
+
+发布目录中那个没有后缀的 `CodexLinxDisplay` 是 `.app/Contents/MacOS` 内部的 Unix 可执行文件，不是给用户直接双击的安装成品。GitHub Actions 会组装、临时签名并校验完整 `.app`，再用 macOS 原生方式压缩成 `.zip`，以保留可执行权限和应用包结构。
+
+## 与旧版的功能对照
+
+| 功能 | WinForms 稳定版 | Avalonia 跨平台版 |
+| --- | --- | --- |
+| Codex 用量、刷新周期、定时/分钟变化推送 | 支持 | 支持 |
+| 番茄钟及实时状态、操作后立即推送 | 支持 | 支持 |
+| CPU/内存/网络监控及动态推送周期 | 支持 | 支持，并允许 2–60 秒自定义 |
+| 自定义图片（含 GIF 首帧） | 支持 | 支持 |
+| 四套卡片样式、安全区、JPEG 质量 | 支持 | 支持 |
+| 系统托盘打开、立即推送、退出 | 支持 | 支持 |
+| 登录时自动启动、旧设置迁移 | Windows | Windows / macOS / Linux |
+
+跨平台版在切换显示模式以及开始、暂停、跳过或重置番茄钟后，会像旧版一样立即向键盘推送当前画面。
+
 ## 从源码运行
 
 安装 [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0) 后执行：
@@ -75,8 +97,8 @@ dotnet run --project tests/CodexLinxDisplay.CrossPlatform.Tests --configuration 
 GitHub Actions 会在 Windows、macOS 和 Ubuntu 上分别构建并运行同一套测试。推送与桌面项目版本一致的 `vX.Y.Z-preview.N` 标签时，会创建预发布 Release：
 
 - `CodexLinxDisplay-Windows-x64-*.zip`
-- `CodexLinxDisplay-macOS-AppleSilicon-*.tar.gz`
-- `CodexLinxDisplay-macOS-Intel-*.tar.gz`
+- `CodexLinxDisplay-macOS-AppleSilicon-*.zip`
+- `CodexLinxDisplay-macOS-Intel-*.zip`
 - `CodexLinxDisplay-Linux-x64-*.tar.gz`
 - `SHA256SUMS.txt`
 

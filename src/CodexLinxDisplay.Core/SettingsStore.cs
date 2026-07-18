@@ -29,8 +29,7 @@ public sealed class SettingsStore
             value.JpegQuality = Math.Clamp(value.JpegQuality, 50, 100);
             value.CodexRefreshSeconds = value.CodexRefreshSeconds is 60 or 300 or 600 or 1800
                 ? value.CodexRefreshSeconds : 300;
-            value.DynamicUploadSeconds = value.DynamicUploadSeconds is 2 or 5 or 10 or 30
-                ? value.DynamicUploadSeconds : 5;
+            value.DynamicUploadSeconds = Math.Clamp(value.DynamicUploadSeconds, 2, 60);
             if (!Enum.IsDefined(value.DisplayMode)) value.DisplayMode = DisplayMode.Codex;
             if (!Enum.IsDefined(value.CardTheme)) value.CardTheme = CardTheme.DeepSpace;
             return value;
