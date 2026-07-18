@@ -26,7 +26,7 @@ jobs:
       - name: Verify tag matches project version
         shell: pwsh
         run: |
-          [xml]$project = Get-Content "src/CodexLinxDisplay.Windows/CodexLinxDisplay.Windows.csproj"
+          [xml]$project = Get-Content "src/LinxDisplay.Windows/LinxDisplay.Windows.csproj"
           $version = $project.Project.PropertyGroup.Version | Select-Object -First 1
           if ("v$version" -ne "${{ github.ref_name }}") {
             throw "Tag ${{ github.ref_name }} does not match project version $version."
@@ -35,12 +35,12 @@ jobs:
       - name: Run smoke tests
         shell: pwsh
         run: |
-          dotnet restore CodexLinxDisplayWindows.sln
-          dotnet run --project tests/CodexLinxDisplay.Windows.SmokeTests --configuration Release --no-restore
+          dotnet restore LinxDisplay.Windows.sln
+          dotnet run --project tests/LinxDisplay.Windows.SmokeTests --configuration Release --no-restore
 
       - name: Restore Windows runtime assets
         shell: pwsh
-        run: dotnet restore src/CodexLinxDisplay.Windows/CodexLinxDisplay.Windows.csproj --runtime win-x64
+        run: dotnet restore src/LinxDisplay.Windows/LinxDisplay.Windows.csproj --runtime win-x64
 
       - name: Build Windows packages
         shell: pwsh
@@ -55,10 +55,10 @@ jobs:
           $releaseDirectory = Join-Path $PWD ".release"
           New-Item -ItemType Directory -Path $releaseDirectory -Force | Out-Null
 
-          $selfContained = Join-Path $releaseDirectory "CodexLinxDisplay-Windows-x64-SelfContained-v$version.zip"
-          $frameworkDependent = Join-Path $releaseDirectory "CodexLinxDisplay-Windows-x64-FrameworkDependent-v$version.zip"
-          Compress-Archive -LiteralPath "artifacts/windows-x64/CodexLinxDisplay.exe" -DestinationPath $selfContained
-          Compress-Archive -LiteralPath "artifacts/windows-x64-framework-dependent/CodexLinxDisplay.exe" -DestinationPath $frameworkDependent
+          $selfContained = Join-Path $releaseDirectory "LinxDisplay-Windows-x64-SelfContained-v$version.zip"
+          $frameworkDependent = Join-Path $releaseDirectory "LinxDisplay-Windows-x64-FrameworkDependent-v$version.zip"
+          Compress-Archive -LiteralPath "artifacts/windows-x64/LinxDisplay.exe" -DestinationPath $selfContained
+          Compress-Archive -LiteralPath "artifacts/windows-x64-framework-dependent/LinxDisplay.exe" -DestinationPath $frameworkDependent
 
           Get-ChildItem $releaseDirectory -Filter "*.zip" | Sort-Object Name | ForEach-Object {
             $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -78,7 +78,7 @@ jobs:
           - **FrameworkDependent**：文件更小，但电脑必须安装 .NET 8 Desktop Runtime。
           - `SHA256SUMS.txt`：用于校验下载文件是否完整。
 
-          解压后运行 `CodexLinxDisplay.exe`，在软件中填写 Linx68 键盘的图像 API 地址即可。
+          解压后运行 `LinxDisplay.exe`，在软件中填写 Linx68 键盘的图像 API 地址即可。
           "@
           $assets = Get-ChildItem ".release" -File | ForEach-Object FullName
-          gh release create $tag $assets --verify-tag --latest --title "CodexLinxDisplay $tag" --notes $notes
+          gh release create $tag $assets --verify-tag --latest --title "LinxDisplay $tag" --notes $notes

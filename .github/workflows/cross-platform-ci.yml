@@ -27,10 +27,72 @@ jobs:
           dotnet-version: "10.0.x"
 
       - name: Restore
-        run: dotnet restore CodexLinxDisplay.CrossPlatform.slnx
+        run: dotnet restore LinxDisplay.CrossPlatform.slnx
 
       - name: Build
-        run: dotnet build CodexLinxDisplay.CrossPlatform.slnx --configuration Release --no-restore
+        run: dotnet build LinxDisplay.CrossPlatform.slnx --configuration Release --no-restore
 
       - name: Run cross-platform smoke tests
-        run: dotnet run --project tests/CodexLinxDisplay.CrossPlatform.Tests --configuration Release --no-build
+        run: dotnet run --project tests/LinxDisplay.CrossPlatform.Tests --configuration Release --no-build
+
+  package-macos:
+    name: Package macOS (${{ matrix.architecture }})
+    runs-on: macos-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - architecture: Apple Silicon
+            rid: osx-arm64
+            asset: macOS-AppleSilicon
+          - architecture: Intel
+            rid: osx-x64
+            asset: macOS-Intel
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Read application version
+        id: version
+        shell: pwsh
+        run: |
+          [xml]$project = Get-Content "src/LinxDisplay.Desktop/LinxDisplay.Desktop.csproj"
+          $version = $project.Project.PropertyGroup.Version | Select-Object -First 1
+          "value=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Publish self-contained macOS app
+        run: >-
+          dotnet publish src/LinxDisplay.Desktop/LinxDisplay.Desktop.csproj
+          --configuration Release
+          --runtime ${{ matrix.rid }}
+          --self-contained true
+          -p:PublishSingleFile=true
+          -p:EnableCompressionInSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:DebugType=None
+          -p:DebugSymbols=false
+          --output .release/publish
+
+      - name: Build and verify app bundle
+        shell: bash
+        run: |
+          bash scripts/package-macos.sh \
+            .release/publish \
+            .release \
+            "${{ matrix.asset }}" \
+            "${{ steps.version.outputs.value }}" \
+            "${{ matrix.rid }}"
+
+      - name: Upload installable app bundle
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ matrix.asset }}
+          path: .release/LinxDisplay-${{ matrix.asset }}-v${{ steps.version.outputs.value }}.zip
+          if-no-files-found: error
