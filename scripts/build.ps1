@@ -7,7 +7,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
-$projectPath = Join-Path $repositoryRoot "src\CodexLinxDisplay.Windows\CodexLinxDisplay.Windows.csproj"
+$projectPath = Join-Path $repositoryRoot "src\LinxDisplay.Windows\LinxDisplay.Windows.csproj"
 $selfContained = -not $FrameworkDependent
 $outputName = if ($FrameworkDependent) {
   "windows-$($Runtime.Substring(4))-framework-dependent"

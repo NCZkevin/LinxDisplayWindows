@@ -11,10 +11,10 @@ output_dir="$2"
 asset_name="$3"
 version="$4"
 rid="$5"
-app="$output_dir/CodexLinxDisplay.app"
+app="$output_dir/LinxDisplay.app"
 iconset="$output_dir/app.iconset"
-executable="$app/Contents/MacOS/CodexLinxDisplay"
-archive="$output_dir/CodexLinxDisplay-${asset_name}-v${version}.zip"
+executable="$app/Contents/MacOS/LinxDisplay"
+archive="$output_dir/LinxDisplay-${asset_name}-v${version}.zip"
 marketing_version="${version%%-*}"
 build_version="${version##*.}"
 
@@ -40,10 +40,10 @@ file "$executable" | grep -q "$expected_architecture" || {
 }
 
 for size in 16 32 128 256 512; do
-  sips -z "$size" "$size" src/CodexLinxDisplay.Windows/Assets/app-icon.png \
+  sips -z "$size" "$size" src/LinxDisplay.Windows/Assets/app-icon.png \
     --out "$iconset/icon_${size}x${size}.png" >/dev/null
   double=$((size * 2))
-  sips -z "$double" "$double" src/CodexLinxDisplay.Windows/Assets/app-icon.png \
+  sips -z "$double" "$double" src/LinxDisplay.Windows/Assets/app-icon.png \
     --out "$iconset/icon_${size}x${size}@2x.png" >/dev/null
 done
 iconutil -c icns "$iconset" -o "$app/Contents/Resources/app.icns"
@@ -54,11 +54,11 @@ cat > "$app/Contents/Info.plist" <<PLIST
 <plist version="1.0">
 <dict>
   <key>CFBundleName</key><string>LinxDisplay</string>
-  <key>CFBundleDisplayName</key><string>Codex 屏显 for Linx68</string>
-  <key>CFBundleIdentifier</key><string>com.codexlinxdisplay.desktop</string>
+  <key>CFBundleDisplayName</key><string>LinxDisplay</string>
+  <key>CFBundleIdentifier</key><string>com.linxdisplay.desktop</string>
   <key>CFBundleVersion</key><string>${build_version}</string>
   <key>CFBundleShortVersionString</key><string>${marketing_version}</string>
-  <key>CFBundleExecutable</key><string>CodexLinxDisplay</string>
+  <key>CFBundleExecutable</key><string>LinxDisplay</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleIconFile</key><string>app.icns</string>
   <key>LSMinimumSystemVersion</key><string>12.0</string>

@@ -18,7 +18,7 @@ jobs:
       - id: version
         shell: pwsh
         run: |
-          [xml]$project = Get-Content "src/CodexLinxDisplay.Desktop/CodexLinxDisplay.Desktop.csproj"
+          [xml]$project = Get-Content "src/LinxDisplay.Desktop/LinxDisplay.Desktop.csproj"
           $version = $project.Project.PropertyGroup.Version | Select-Object -First 1
           if ("v$version" -ne "${{ github.ref_name }}") {
             throw "Tag ${{ github.ref_name }} does not match desktop project version $version."
@@ -61,11 +61,11 @@ jobs:
           dotnet-version: "10.0.x"
 
       - name: Test
-        run: dotnet run --project tests/CodexLinxDisplay.CrossPlatform.Tests --configuration Release
+        run: dotnet run --project tests/LinxDisplay.CrossPlatform.Tests --configuration Release
 
       - name: Publish self-contained app
         run: >-
-          dotnet publish src/CodexLinxDisplay.Desktop/CodexLinxDisplay.Desktop.csproj
+          dotnet publish src/LinxDisplay.Desktop/LinxDisplay.Desktop.csproj
           --configuration Release
           --runtime ${{ matrix.rid }}
           --self-contained true
@@ -84,7 +84,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $name = "CodexLinxDisplay-${{ matrix.asset }}-v${{ needs.verify.outputs.version }}.zip"
+          $name = "LinxDisplay-${{ matrix.asset }}-v${{ needs.verify.outputs.version }}.zip"
           Compress-Archive -Path ".release/publish/*" -DestinationPath ".release/$name"
 
       - name: Package macOS app bundle
@@ -102,14 +102,14 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          chmod +x .release/publish/CodexLinxDisplay
-          tar -C .release/publish -czf ".release/CodexLinxDisplay-${{ matrix.asset }}-v${{ needs.verify.outputs.version }}.tar.gz" .
+          chmod +x .release/publish/LinxDisplay
+          tar -C .release/publish -czf ".release/LinxDisplay-${{ matrix.asset }}-v${{ needs.verify.outputs.version }}.tar.gz" .
 
       - name: Upload package
         uses: actions/upload-artifact@v6
         with:
           name: ${{ matrix.asset }}
-          path: .release/CodexLinxDisplay-${{ matrix.asset }}-v${{ needs.verify.outputs.version }}.*
+          path: .release/LinxDisplay-${{ matrix.asset }}-v${{ needs.verify.outputs.version }}.*
           if-no-files-found: error
 
   release:
@@ -122,7 +122,7 @@ jobs:
           merge-multiple: true
       - name: Create checksums
         shell: bash
-        run: cd .release && sha256sum CodexLinxDisplay-* > SHA256SUMS.txt
+        run: cd .release && sha256sum LinxDisplay-* > SHA256SUMS.txt
       - name: Publish preview release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -130,5 +130,5 @@ jobs:
         run: |
           gh release create "${{ github.ref_name }}" .release/* \
             --verify-tag --prerelease \
-            --title "CodexLinxDisplay ${{ github.ref_name }}" \
-            --notes "跨平台预览版，支持 Windows、macOS（Apple Silicon/Intel）和 Linux。Windows 解压后运行 EXE；macOS 解压后将应用拖入 Applications；Linux 解压后运行 CodexLinxDisplay。此版本尚未进行 Apple 代码签名，macOS 首次启动可能需要在系统设置中手动允许。"
+            --title "LinxDisplay ${{ github.ref_name }}" \
+            --notes "跨平台预览版，支持 Windows、macOS（Apple Silicon/Intel）和 Linux。Windows 解压后运行 EXE；macOS 解压后将应用拖入 Applications；Linux 解压后运行 LinxDisplay。此版本尚未进行 Apple 代码签名，macOS 首次启动可能需要在系统设置中手动允许。"

@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/LinxDisplay.Core/LinxDisplay.Core.csproj" />
+    <Project Path="src/LinxDisplay.Rendering/LinxDisplay.Rendering.csproj" />
+    <Project Path="src/LinxDisplay.Desktop/LinxDisplay.Desktop.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/LinxDisplay.CrossPlatform.Tests/LinxDisplay.CrossPlatform.Tests.csproj" />
+  </Folder>
+</Solution>
