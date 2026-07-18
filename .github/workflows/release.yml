@@ -10,6 +10,7 @@ permissions:
 
 jobs:
   windows-release:
+    if: ${{ !contains(github.ref_name, '-') }}
     runs-on: windows-latest
     timeout-minutes: 30
 
