@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing release tag to build and publish
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -13,17 +19,23 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.value }}
+      tag: ${{ steps.version.outputs.tag }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.inputs.release_tag || github.ref }}
       - id: version
         shell: pwsh
+        env:
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name }}
         run: |
           [xml]$project = Get-Content "src/LinxDisplay.Desktop/LinxDisplay.Desktop.csproj"
           $version = $project.Project.PropertyGroup.Version | Select-Object -First 1
-          if ("v$version" -ne "${{ github.ref_name }}") {
-            throw "Tag ${{ github.ref_name }} does not match desktop project version $version."
+          if ("v$version" -ne $env:RELEASE_TAG) {
+            throw "Tag $env:RELEASE_TAG does not match desktop project version $version."
           }
           "value=$version" >> $env:GITHUB_OUTPUT
+          "tag=$env:RELEASE_TAG" >> $env:GITHUB_OUTPUT
 
   build:
     needs: verify
@@ -34,21 +46,25 @@ jobs:
           - os: windows-latest
             rid: win-x64
             asset: Windows-x64
+            extension: zip
             single_file: true
             extract_native: true
           - os: macos-latest
             rid: osx-arm64
             asset: macOS-AppleSilicon
+            extension: zip
             single_file: true
             extract_native: true
           - os: macos-latest
             rid: osx-x64
             asset: macOS-Intel
+            extension: zip
             single_file: true
             extract_native: true
           - os: ubuntu-latest
             rid: linux-x64
             asset: Linux-x64
+            extension: tar.gz
             single_file: true
             extract_native: true
     runs-on: ${{ matrix.os }}
@@ -56,6 +72,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.verify.outputs.tag }}
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: "10.0.x"
@@ -109,7 +127,7 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: ${{ matrix.asset }}
-          path: .release/LinxDisplay-${{ matrix.asset }}-v${{ needs.verify.outputs.version }}.*
+          path: .release/LinxDisplay-${{ matrix.asset }}-v${{ needs.verify.outputs.version }}.${{ matrix.extension }}
           if-no-files-found: error
 
   release:
@@ -126,7 +144,7 @@ jobs:
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ needs.verify.outputs.tag }}
         shell: bash
         run: |
           release_flags=(--latest)
