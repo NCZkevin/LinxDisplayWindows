@@ -1,0 +1,146 @@
+name: Build and publish cross-platform preview
+
+on:
+  push:
+    tags:
+      - "v*-preview*"
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.value }}
+    steps:
+      - uses: actions/checkout@v6
+      - id: version
+        shell: pwsh
+        run: |
+          [xml]$project = Get-Content "src/CodexLinxDisplay.Desktop/CodexLinxDisplay.Desktop.csproj"
+          $version = $project.Project.PropertyGroup.Version | Select-Object -First 1
+          if ("v$version" -ne "${{ github.ref_name }}") {
+            throw "Tag ${{ github.ref_name }} does not match desktop project version $version."
+          }
+          "value=$version" >> $env:GITHUB_OUTPUT
+
+  build:
+    needs: verify
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            rid: win-x64
+            asset: Windows-x64
+          - os: macos-latest
+            rid: osx-arm64
+            asset: macOS-AppleSilicon
+          - os: macos-latest
+            rid: osx-x64
+            asset: macOS-Intel
+          - os: ubuntu-latest
+            rid: linux-x64
+            asset: Linux-x64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Test
+        run: dotnet run --project tests/CodexLinxDisplay.CrossPlatform.Tests --configuration Release
+
+      - name: Publish self-contained app
+        run: >-
+          dotnet publish src/CodexLinxDisplay.Desktop/CodexLinxDisplay.Desktop.csproj
+          --configuration Release
+          --runtime ${{ matrix.rid }}
+          --self-contained true
+          -p:PublishSingleFile=true
+          -p:EnableCompressionInSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:DebugType=None
+          -p:DebugSymbols=false
+          --output .release/publish
+
+      - name: Remove native debug symbols
+        shell: pwsh
+        run: Get-ChildItem .release/publish -Recurse -Filter "*.pdb" | Remove-Item -Force
+
+      - name: Package Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $name = "CodexLinxDisplay-${{ matrix.asset }}-v${{ needs.verify.outputs.version }}.zip"
+          Compress-Archive -Path ".release/publish/*" -DestinationPath ".release/$name"
+
+      - name: Package macOS app bundle
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          app=".release/CodexLinxDisplay.app"
+          mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources" .release/icon.iconset
+          cp -R .release/publish/. "$app/Contents/MacOS/"
+          chmod +x "$app/Contents/MacOS/CodexLinxDisplay"
+          for size in 16 32 128 256 512; do
+            sips -z "$size" "$size" src/CodexLinxDisplay.Windows/Assets/app-icon.png --out ".release/icon.iconset/icon_${size}x${size}.png" >/dev/null
+            double=$((size * 2))
+            sips -z "$double" "$double" src/CodexLinxDisplay.Windows/Assets/app-icon.png --out ".release/icon.iconset/icon_${size}x${size}@2x.png" >/dev/null
+          done
+          iconutil -c icns .release/icon.iconset -o "$app/Contents/Resources/app.icns"
+          cat > "$app/Contents/Info.plist" <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "https://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>CFBundleName</key><string>CodexLinxDisplay</string>
+            <key>CFBundleDisplayName</key><string>Codex 屏显 for Linx68</string>
+            <key>CFBundleIdentifier</key><string>com.codexlinxdisplay.desktop</string>
+            <key>CFBundleVersion</key><string>${{ needs.verify.outputs.version }}</string>
+            <key>CFBundleShortVersionString</key><string>${{ needs.verify.outputs.version }}</string>
+            <key>CFBundleExecutable</key><string>CodexLinxDisplay</string>
+            <key>CFBundleIconFile</key><string>app.icns</string>
+            <key>NSHighResolutionCapable</key><true/>
+          </dict></plist>
+          PLIST
+          tar -C .release -czf ".release/CodexLinxDisplay-${{ matrix.asset }}-v${{ needs.verify.outputs.version }}.tar.gz" CodexLinxDisplay.app
+
+      - name: Package Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          chmod +x .release/publish/CodexLinxDisplay
+          tar -C .release/publish -czf ".release/CodexLinxDisplay-${{ matrix.asset }}-v${{ needs.verify.outputs.version }}.tar.gz" .
+
+      - name: Upload package
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ matrix.asset }}
+          path: .release/CodexLinxDisplay-${{ matrix.asset }}-v${{ needs.verify.outputs.version }}.*
+          if-no-files-found: error
+
+  release:
+    needs: [verify, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          path: .release
+          merge-multiple: true
+      - name: Create checksums
+        shell: bash
+        run: cd .release && sha256sum CodexLinxDisplay-* > SHA256SUMS.txt
+      - name: Publish preview release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh release create "${{ github.ref_name }}" .release/* \
+            --verify-tag --prerelease \
+            --title "CodexLinxDisplay ${{ github.ref_name }}" \
+            --notes "跨平台预览版，支持 Windows、macOS（Apple Silicon/Intel）和 Linux。Windows 解压后运行 EXE；macOS 解压后将应用拖入 Applications；Linux 解压后运行 CodexLinxDisplay。此版本尚未进行 Apple 代码签名，macOS 首次启动可能需要在系统设置中手动允许。"

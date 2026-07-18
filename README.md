@@ -1,38 +1,47 @@
-# Codex 屏显 Windows 版
+# Codex 屏显 for Linx68
 
-这是 macOS 版 CodexLinxDisplay 的原生 Windows 实现。它常驻系统托盘，把 Codex 用量、番茄钟、系统状态或自定义图片渲染成固定为 `142 × 428` 的 JPEG，并通过局域网推送到 Linx68 键盘。
+把 Codex 用量、番茄钟、CPU/内存/网络状态或自定义图片渲染为 `142 × 428` JPEG，并通过局域网推送到 Linx68 键盘左侧屏幕。
 
 <p align="center">
   <img src="src/CodexLinxDisplay.Windows/Assets/app-icon.png" width="128" alt="Codex 屏显应用图标">
 </p>
 
-## 下载
+## 平台状态
 
-普通用户请从 [GitHub Releases](https://github.com/NCZkevin/LinxDisplayWindows/releases/latest) 下载最新版本：
+| 平台 | 新版 Avalonia 应用 | 系统监控 | 登录时启动 | 系统托盘 |
+| --- | --- | --- | --- | --- |
+| Windows x64 | 支持 | 支持 | 支持 | 支持 |
+| macOS Apple Silicon / Intel | 支持 | 支持 | 支持 | 支持 |
+| Linux x64 | 预览支持 | 支持 | 支持 | 取决于桌面环境的 AppIndicator/StatusNotifier 支持 |
 
-- `SelfContained`：推荐版本，解压即可运行，不需要预先安装 .NET。
-- `FrameworkDependent`：体积更小，但电脑必须安装 .NET 8 Desktop Runtime。
-- `SHA256SUMS.txt`：下载文件的 SHA-256 校验值。
+跨平台版位于 `src/CodexLinxDisplay.Desktop`，使用 .NET 10、Avalonia 12.1 和 SkiaSharp。原 WinForms 稳定版仍保留在 `src/CodexLinxDisplay.Windows`，现有 v0.4.x 用户不会受迁移影响。
 
 ## 功能
 
-- 读取 Codex 本周/当前周期剩余用量、可用重置次数和重置时间。
-- 内置番茄钟：可设置任务、专注/短休/长休时长，支持开始、暂停、继续、跳过和重置；每完成四个番茄自动进入长休息。
-- 内置系统监控：显示 CPU、内存占用、实时下载/上传速率和系统运行时间，推送间隔可选 2、5、10 或 30 秒。
-- 四套卡片主题可随时切换：深空薄荷、明亮极简、霓虹紫和琥珀终端；Codex、番茄钟与系统监控共用所选主题。
-- 按 1、5、10 或 30 分钟自动刷新；内容没有变化时不重复推送。
-- 支持自定义图片，自动居中裁切，并为键盘自身的天气、Wi-Fi、电量状态栏保留顶部安全区。
-- 可调整顶部安全区（44–80px）和 JPEG 质量（50%–100%）。
-- 关闭窗口后继续在系统托盘运行，支持登录 Windows 时自动启动。
-- 卡片明确区分“当前时间”和“下次重置”，当前时间每分钟自动推送，不会额外启动 Codex 进程。
-- 不需要键盘厂商 SDK，也不需要云端中转服务。
+- Codex 用量：显示当前周期剩余、重置次数、重置时间和电脑本地时间。
+- 番茄钟：任务名称、专注/短休/长休时长，支持暂停、继续、跳过和重置。
+- 系统监控：CPU、内存、下载/上传速度与系统运行时间。
+- 自定义图片：自动居中裁切，并为键盘状态栏保留 44–80px 顶部安全区。
+- 四套共享主题：深空薄荷、明亮极简、霓虹紫、琥珀终端。
+- 动态预览与定时推送，图片始终为 `142 × 428` JPEG 且不超过 512KB。
+- Windows/macOS 关闭窗口后可继续在系统托盘运行；三平台均可配置登录时启动。
+- 首次运行跨平台版时会自动迁移旧 Windows 版的 API 地址、主题、模式和图片设置。
 
-## 运行
+## 下载
 
-安装 [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) 后，在仓库根目录运行：
+- Windows v0.4 稳定版继续从 [GitHub Releases](https://github.com/NCZkevin/LinxDisplayWindows/releases/latest) 下载。
+- v0.5 跨平台预览版发布后，同一 Releases 页面会提供 Windows、macOS Apple Silicon、macOS Intel 和 Linux 文件。
+- 普通桌面软件应放在 GitHub Releases，而不是 Packages；Packages 主要用于 NuGet、容器等供其他软件依赖的制品。
+
+预览版采用自包含发布，无需预装 .NET。macOS 预览包暂未使用 Apple Developer ID 签名，首次打开可能需要在“系统设置 → 隐私与安全性”中手动允许。
+
+## 从源码运行
+
+安装 [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0) 后执行：
 
 ```powershell
-dotnet run --project .\src\CodexLinxDisplay.Windows\CodexLinxDisplay.Windows.csproj
+dotnet restore CodexLinxDisplay.CrossPlatform.slnx
+dotnet run --project src/CodexLinxDisplay.Desktop/CodexLinxDisplay.Desktop.csproj
 ```
 
 在“图像 API”中填写键盘当前地址，例如：
@@ -41,88 +50,64 @@ dotnet run --project .\src\CodexLinxDisplay.Windows\CodexLinxDisplay.Windows.csp
 http://192.168.31.71/image/upload
 ```
 
-程序会发送一个请求体为原始 JPEG 数据的 `POST` 请求，请求头为 `Content-Type: image/jpeg`。电脑与键盘需要连接在同一局域网。
+程序会以 `Content-Type: image/jpeg` 发送原始 JPEG 请求体。电脑与键盘需要连接在同一局域网。
 
-在“显示模式”中选择“番茄钟”或“系统监控”即可切换屏幕内容。番茄钟使用绝对结束时间，即使电脑锁屏或睡眠，恢复后也会自动推进到正确阶段；运行状态保存在本地，重启软件不会丢失。系统监控直接读取 Windows 和网卡的本机计数器，不需要管理员权限或第三方服务。
-
-Codex 读取依赖本机的 `codex.exe`。程序会先读取 `CODEX_CLI_PATH` 环境变量，再从 `PATH` 和 Windows 应用执行别名目录查找。若自动查找失败，可设置：
+Codex 用量读取依赖本机 Codex CLI。程序会先读取 `CODEX_CLI_PATH`，再从 `PATH` 查找 `codex`（Windows 也支持 `codex.exe`、`.cmd`、`.bat`）。例如：
 
 ```powershell
-[Environment]::SetEnvironmentVariable(
-  "CODEX_CLI_PATH",
-  "C:\path\to\codex.exe",
-  "User"
-)
+[Environment]::SetEnvironmentVariable("CODEX_CLI_PATH", "C:\path\to\codex.exe", "User")
 ```
 
-设置后重新启动 Codex 屏显。
+macOS/Linux 可在 shell 配置中设置：
 
-## 构建单文件 EXE
+```bash
+export CODEX_CLI_PATH=/path/to/codex
+```
 
-在仓库根目录运行：
+## 验证
+
+跨平台冒烟测试覆盖四套主题的 Codex、番茄钟、系统监控卡片，JPEG 编解码、番茄钟状态切换以及当前系统的 CPU/内存采样：
+
+```powershell
+dotnet run --project tests/CodexLinxDisplay.CrossPlatform.Tests --configuration Release
+```
+
+GitHub Actions 会在 Windows、macOS 和 Ubuntu 上分别构建并运行同一套测试。推送与桌面项目版本一致的 `vX.Y.Z-preview.N` 标签时，会创建预发布 Release：
+
+- `CodexLinxDisplay-Windows-x64-*.zip`
+- `CodexLinxDisplay-macOS-AppleSilicon-*.tar.gz`
+- `CodexLinxDisplay-macOS-Intel-*.tar.gz`
+- `CodexLinxDisplay-Linux-x64-*.tar.gz`
+- `SHA256SUMS.txt`
+
+正式 `vX.Y.Z` 标签暂时继续走原 Windows 稳定版发布流程，直到跨平台版完成足够的实机验证。
+
+## 本地数据与隐私
+
+配置、番茄钟状态和自定义图片副本保存在系统的用户应用数据目录：
+
+- Windows：`%APPDATA%\CodexLinxDisplay`
+- macOS：`~/Library/Application Support/CodexLinxDisplay`
+- Linux：`~/.config/CodexLinxDisplay`（受 `XDG_CONFIG_HOME` 影响）
+
+程序不会上传 Codex 凭据或原始用量/系统监控数据；只有渲染后的 JPEG 会发送到用户填写的键盘地址。登录时启动分别使用 Windows 当前用户 Run 注册表项、macOS LaunchAgent 和 Linux XDG Autostart 文件。
+
+## 项目结构
+
+- `src/CodexLinxDisplay.Core`：设置、Codex 协议、番茄钟、上传和三平台系统服务。
+- `src/CodexLinxDisplay.Rendering`：基于 SkiaSharp 的 `142 × 428` JPEG 渲染器。
+- `src/CodexLinxDisplay.Desktop`：Avalonia 跨平台桌面界面与系统托盘。
+- `tests/CodexLinxDisplay.CrossPlatform.Tests`：三平台共用冒烟测试。
+- `src/CodexLinxDisplay.Windows`：保留的 WinForms 稳定版。
+- `.github/workflows/cross-platform-ci.yml`：Windows/macOS/Linux 持续集成。
+- `.github/workflows/cross-platform-preview.yml`：跨平台预览版发布。
+
+## 旧 Windows 稳定版
+
+需要构建 v0.4.x WinForms 版本时仍可执行：
 
 ```powershell
 .\scripts\build.ps1
 ```
 
-默认生成自包含的 x64 单文件版本：
-
-```text
-artifacts\windows-x64\CodexLinxDisplay.exe
-```
-
-自包含版本启用了单文件压缩，目标电脑无需另行安装 .NET Runtime。也可指定 ARM64：
-
-当前 x64 构建约为 `63MB`；未压缩版本原先约为 `154MB`。
-
-```powershell
-.\scripts\build.ps1 -Runtime win-arm64
-```
-
-如果目标电脑已经安装 [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0)，可以生成体积最小的框架依赖版本：
-
-```powershell
-.\scripts\build.ps1 -FrameworkDependent
-```
-
-输出位于 `artifacts\windows-x64-framework-dependent`。它本身很小，但离开已安装的 .NET Desktop Runtime 无法运行。
-当前 x64 框架依赖构建约为 `0.40MB`。
-
-仓库包含自动发布流程：项目版本更新后推送对应的 `vX.Y.Z` Git 标签，GitHub Actions 会运行冒烟测试、构建以上两个版本，并自动创建带 ZIP 和校验文件的 GitHub Release。
-
-## 验证
-
-不依赖第三方测试框架的冒烟测试会检查四套主题的全部卡片尺寸与差异、番茄钟阶段切换、Windows 系统采样、JPEG 编码、顶部安全区，以及发送给本地模拟设备的 HTTP 请求：
-
-```powershell
-dotnet run --project .\tests\CodexLinxDisplay.Windows.SmokeTests --configuration Release
-```
-
-追加 `-- --codex` 还会实际启动本机 Codex app-server 并读取一次用量：
-
-```powershell
-dotnet run --project .\tests\CodexLinxDisplay.Windows.SmokeTests --configuration Release -- --codex
-```
-
-## 本地数据与隐私
-
-配置、番茄钟状态和自定义图片副本保存在 `%APPDATA%\CodexLinxDisplay`。程序不会上传 Codex 凭据或原始用量/系统监控数据；只有渲染后的 JPEG 会发送到用户填写的键盘地址。
-
-登录时启动使用当前用户的注册表项：
-
-```text
-HKCU\Software\Microsoft\Windows\CurrentVersion\Run\CodexLinxDisplay
-```
-
-## 项目结构
-
-- `src/CodexLinxDisplay.Windows`：Windows 托盘应用。
-- `src/CodexLinxDisplay.Windows/Services/CodexRateLimitClient.cs`：Codex app-server stdio 协议。
-- `src/CodexLinxDisplay.Windows/Services/ScreenImageRenderer.cs`：用量卡片与自定义图片渲染、JPEG 编码。
-- `src/CodexLinxDisplay.Windows/Services/PomodoroService.cs`：可跨睡眠恢复的番茄钟状态机。
-- `src/CodexLinxDisplay.Windows/Services/SystemMonitorService.cs`：CPU、内存与网卡速率采样。
-- `src/CodexLinxDisplay.Windows/Services/StatusCardRenderer.cs`：番茄钟与系统监控卡片渲染。
-- `src/CodexLinxDisplay.Windows/Services/ScreenThemes.cs`：四套卡片主题及共享调色板。
-- `src/CodexLinxDisplay.Windows/Services/ImageApiClient.cs`：Linx68 图像接口上传。
-- `tests/CodexLinxDisplay.Windows.SmokeTests`：无需第三方测试框架的冒烟测试。
-- `scripts/build.ps1`：x64/ARM64 单文件发布脚本。
+它继续输出到 `artifacts/windows-x64`，旧冒烟测试位于 `tests/CodexLinxDisplay.Windows.SmokeTests`。
