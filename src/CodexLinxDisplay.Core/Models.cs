@@ -28,6 +28,7 @@ public sealed class AppSettings
     public string? CustomImagePath { get; set; }
     public string? CustomImageName { get; set; }
     public bool StartWithSystem { get; set; }
+    public string? CodexCliPath { get; set; }
 }
 
 public sealed record UsageSnapshot(

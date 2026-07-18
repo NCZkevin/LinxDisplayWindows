@@ -124,6 +124,19 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
+    public string CodexCliPath
+    {
+        get => _settings.CodexCliPath ?? string.Empty;
+        set
+        {
+            var normalized = string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+            if (_settings.CodexCliPath == normalized) return;
+            _settings.CodexCliPath = normalized;
+            SaveSettings();
+            OnPropertyChanged();
+        }
+    }
+
     public int SafeAreaHeight
     {
         get => _settings.SafeAreaHeight;
@@ -275,7 +288,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             if (_settings.DisplayMode == DisplayMode.Codex)
             {
                 _lastCodexRefresh = DateTimeOffset.Now;
-                _usage = await _codex.FetchAsync();
+                _usage = await _codex.FetchAsync(_settings.CodexCliPath);
                 _lastCodexRefresh = DateTimeOffset.Now;
             }
             else if (_settings.DisplayMode == DisplayMode.SystemMonitor)

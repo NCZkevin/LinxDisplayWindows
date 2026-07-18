@@ -74,7 +74,7 @@ http://192.168.31.71/image/upload
 
 程序会以 `Content-Type: image/jpeg` 发送原始 JPEG 请求体。电脑与键盘需要连接在同一局域网。
 
-Codex 用量读取依赖本机 Codex CLI。程序会先读取 `CODEX_CLI_PATH`，再从 `PATH` 查找 `codex`（Windows 也支持 `codex.exe`、`.cmd`、`.bat`）。例如：
+Codex 用量读取依赖本机 Codex CLI。程序会依次检查应用内填写的“Codex CLI”、`CODEX_CLI_PATH`、`PATH`，以及 Homebrew、npm、nvm、fnm、Volta、asdf、mise 和 pnpm 的常见位置（Windows 也支持 `codex.exe`、`.cmd`、`.bat`）。例如：
 
 ```powershell
 [Environment]::SetEnvironmentVariable("CODEX_CLI_PATH", "C:\path\to\codex.exe", "User")
@@ -85,6 +85,8 @@ macOS/Linux 可在 shell 配置中设置：
 ```bash
 export CODEX_CLI_PATH=/path/to/codex
 ```
+
+注意：从 Finder 启动的 macOS `.app` 不会继承终端 `.zshrc` 中设置的 `PATH` 或环境变量。如果仍未自动找到，请在终端执行 `which codex`，把输出的完整路径直接填入应用的“Codex CLI”一栏；常见结果是 `/opt/homebrew/bin/codex` 或 `/usr/local/bin/codex`。
 
 ## 验证
 

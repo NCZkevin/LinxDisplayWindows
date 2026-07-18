@@ -5,11 +5,13 @@ namespace CodexLinxDisplay.Core;
 
 public sealed class CodexRateLimitClient
 {
-    public async Task<UsageSnapshot> FetchAsync(CancellationToken cancellationToken = default)
+    public async Task<UsageSnapshot> FetchAsync(
+        string? configuredExecutable = null,
+        CancellationToken cancellationToken = default)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(TimeSpan.FromSeconds(12));
-        using var process = StartCodex();
+        using var process = StartCodex(configuredExecutable);
         try
         {
             await SendAsync(process, new
@@ -75,9 +77,9 @@ public sealed class CodexRateLimitClient
         }
     }
 
-    private static Process StartCodex()
+    private static Process StartCodex(string? configuredExecutable)
     {
-        var executable = ResolveExecutable();
+        var executable = CodexCliLocator.Resolve(configuredExecutable);
         var isCommandScript = executable.EndsWith(".cmd", StringComparison.OrdinalIgnoreCase)
                               || executable.EndsWith(".bat", StringComparison.OrdinalIgnoreCase);
         var startInfo = new ProcessStartInfo
@@ -107,43 +109,8 @@ public sealed class CodexRateLimitClient
         catch (Exception error)
         {
             throw new InvalidOperationException(
-                $"Codex 启动失败：{error.Message}。可用 CODEX_CLI_PATH 指定 Codex CLI。", error);
+                $"Codex 启动失败：{error.Message}。请检查应用中的“Codex CLI”路径或 CODEX_CLI_PATH。", error);
         }
-    }
-
-    private static string ResolveExecutable()
-    {
-        var configuredPath = Environment.GetEnvironmentVariable("CODEX_CLI_PATH");
-        if (!string.IsNullOrWhiteSpace(configuredPath) && File.Exists(configuredPath))
-            return configuredPath;
-
-        var names = OperatingSystem.IsWindows()
-            ? new[] { "codex.exe", "codex.cmd", "codex.bat" }
-            : new[] { "codex" };
-        foreach (var directory in (Environment.GetEnvironmentVariable("PATH") ?? string.Empty)
-                     .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-        {
-            foreach (var name in names)
-            {
-                var candidate = Path.Combine(directory.Trim('"'), name);
-                if (File.Exists(candidate)) return candidate;
-            }
-        }
-
-        if (OperatingSystem.IsWindows())
-        {
-            var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            var aliases = new[]
-            {
-                Path.Combine(localAppData, "Microsoft", "WindowsApps", "codex.exe"),
-                Path.Combine(localAppData, "Programs", "Codex", "codex.exe")
-            };
-            var alias = aliases.FirstOrDefault(File.Exists);
-            if (alias is not null) return alias;
-        }
-
-        throw new FileNotFoundException(
-            "未找到 Codex CLI。请安装 Codex，或使用 CODEX_CLI_PATH 指定可执行文件。");
     }
 
     private static async Task SendAsync(Process process, object message, CancellationToken cancellationToken)

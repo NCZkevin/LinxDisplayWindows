@@ -42,6 +42,20 @@ checks.Add(("Codex automatic sync schedule", () =>
            == AutomaticSyncAction.None, "同一分钟内发生了重复推送");
 }));
 
+checks.Add(("macOS Codex CLI discovery paths", () =>
+{
+    var home = Path.Combine(Path.GetTempPath(), "codex-cli-home");
+    var configured = Path.Combine(home, "custom", "codex");
+    var path = string.Join(Path.PathSeparator, Path.Combine(home, "bin"), "/usr/bin");
+    var candidates = CodexCliLocator.BuildCandidatePaths(configured, null, path, home, false, true);
+    Assert(candidates[0] == configured, "应用内指定的 Codex CLI 路径没有最高优先级");
+    Assert(candidates.Contains(Path.Combine(home, "bin", "codex")), "没有检查继承的 PATH");
+    Assert(candidates.Contains("/opt/homebrew/bin/codex"), "没有检查 Apple Silicon Homebrew 路径");
+    Assert(candidates.Contains("/usr/local/bin/codex"), "没有检查 Intel Homebrew/npm 路径");
+    Assert(candidates.Contains(Path.Combine(home, ".volta", "bin", "codex")), "没有检查 Volta 路径");
+    Assert(candidates.Contains(Path.Combine(home, "Library", "pnpm", "codex")), "没有检查 macOS pnpm 路径");
+}));
+
 checks.Add(("Platform system monitor", () =>
 {
     var monitor = PlatformServiceFactory.CreateSystemMonitor();
