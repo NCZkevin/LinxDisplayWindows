@@ -23,6 +23,7 @@ internal sealed class MainForm : Form
     private readonly ComboBox _modeCombo = new();
     private readonly TextBox _endpointText = new();
     private readonly ComboBox _intervalCombo = new();
+    private readonly ComboBox _themeCombo = new();
     private readonly NumericUpDown _safeAreaInput = new();
     private readonly TrackBar _qualitySlider = new();
     private readonly Label _qualityValue = new();
@@ -389,27 +390,38 @@ internal sealed class MainForm : Form
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 150));
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        grid.Controls.Add(NewLabel("顶部安全区"), 0, 0);
+        grid.Controls.Add(NewLabel("卡片主题"), 0, 0);
+        _themeCombo.DropDownStyle = ComboBoxStyle.DropDownList;
+        _themeCombo.Items.AddRange(Enum.GetValues<CardTheme>()
+            .Select(ScreenThemes.DisplayName)
+            .Cast<object>()
+            .ToArray());
+        _themeCombo.Dock = DockStyle.Fill;
+        _themeCombo.SelectedIndexChanged += (_, _) => HandleRenderSettingChanged();
+        grid.Controls.Add(_themeCombo, 1, 0);
+        grid.SetColumnSpan(_themeCombo, 2);
+
+        grid.Controls.Add(NewLabel("顶部安全区"), 0, 1);
         _safeAreaInput.Minimum = 44;
         _safeAreaInput.Maximum = 80;
         _safeAreaInput.Width = 80;
         _safeAreaInput.Anchor = AnchorStyles.Left;
         _safeAreaInput.ValueChanged += (_, _) => HandleRenderSettingChanged();
-        grid.Controls.Add(_safeAreaInput, 1, 0);
-        grid.Controls.Add(NewLabel("px"), 2, 0);
+        grid.Controls.Add(_safeAreaInput, 1, 1);
+        grid.Controls.Add(NewLabel("px"), 2, 1);
 
-        grid.Controls.Add(NewLabel("JPEG 质量"), 0, 1);
+        grid.Controls.Add(NewLabel("JPEG 质量"), 0, 2);
         _qualitySlider.Minimum = 50;
         _qualitySlider.Maximum = 100;
         _qualitySlider.TickFrequency = 10;
         _qualitySlider.Dock = DockStyle.Fill;
         _qualitySlider.AutoSize = true;
         _qualitySlider.ValueChanged += (_, _) => HandleRenderSettingChanged();
-        grid.Controls.Add(_qualitySlider, 1, 1);
+        grid.Controls.Add(_qualitySlider, 1, 2);
         _qualityValue.AutoSize = true;
         _qualityValue.TextAlign = ContentAlignment.MiddleRight;
         _qualityValue.Anchor = AnchorStyles.Right;
-        grid.Controls.Add(_qualityValue, 2, 1);
+        grid.Controls.Add(_qualityValue, 2, 2);
         return NewGroup("屏幕布局", grid);
     }
 
@@ -488,6 +500,7 @@ internal sealed class MainForm : Form
             _ => 1
         };
         _safeAreaInput.Value = _settings.SafeAreaHeight;
+        _themeCombo.SelectedIndex = (int)_settings.CardTheme;
         _qualitySlider.Value = _settings.JpegQuality;
         _qualityValue.Text = $"{_settings.JpegQuality}%";
         _systemIntervalCombo.SelectedIndex = _settings.SystemMonitorUploadIntervalSeconds switch
@@ -834,21 +847,23 @@ internal sealed class MainForm : Form
                 next = StatusCardRenderer.RenderPomodoro(
                     _pomodoroService.GetSnapshot(DateTimeOffset.Now),
                     _settings.SafeAreaHeight,
-                    DateTimeOffset.Now);
-                _previewCaption.Text = $"番茄钟\r\n顶部 {_settings.SafeAreaHeight}px 留空";
+                    DateTimeOffset.Now,
+                    _settings.CardTheme);
+                _previewCaption.Text = $"番茄钟 · {ScreenThemes.DisplayName(_settings.CardTheme)}\r\n顶部 {_settings.SafeAreaHeight}px 留空";
             }
             else if (_settings.DisplayMode == DisplayMode.SystemMonitor)
             {
-                next = StatusCardRenderer.RenderSystem(_systemSnapshot, _settings.SafeAreaHeight);
-                _previewCaption.Text = $"CPU / 内存 / 网络\r\n顶部 {_settings.SafeAreaHeight}px 留空";
+                next = StatusCardRenderer.RenderSystem(_systemSnapshot, _settings.SafeAreaHeight,
+                    _settings.CardTheme);
+                _previewCaption.Text = $"系统监控 · {ScreenThemes.DisplayName(_settings.CardTheme)}\r\n顶部 {_settings.SafeAreaHeight}px 留空";
             }
             else
             {
                 var now = DateTimeOffset.Now;
                 next = ScreenImageRenderer.RenderUsage(_snapshot ?? UsageSnapshot.Sample,
-                    _settings.SafeAreaHeight, now);
+                    _settings.SafeAreaHeight, now, _settings.CardTheme);
                 _lastRenderedMinute = now.ToString("yyyyMMddHHmm");
-                _previewCaption.Text = $"Codex 用量\r\n顶部 {_settings.SafeAreaHeight}px 留空";
+                _previewCaption.Text = $"Codex 用量 · {ScreenThemes.DisplayName(_settings.CardTheme)}\r\n顶部 {_settings.SafeAreaHeight}px 留空";
             }
 
             var previous = _preview.Image;
@@ -883,6 +898,9 @@ internal sealed class MainForm : Form
         };
         _settings.SafeAreaHeight = (int)_safeAreaInput.Value;
         _settings.JpegQuality = _qualitySlider.Value;
+        _settings.CardTheme = _themeCombo.SelectedIndex is >= 0 and <= 3
+            ? (CardTheme)_themeCombo.SelectedIndex
+            : CardTheme.DeepSpace;
         _settings.SystemMonitorUploadIntervalSeconds = _systemIntervalCombo.SelectedIndex switch
         {
             0 => 2,
@@ -982,6 +1000,7 @@ internal sealed class MainForm : Form
             _modeOptionsGroup.Visible = isPomodoro || isSystem;
         _intervalCombo.Enabled = isCodex;
         _refreshButton.Enabled = isCodex;
+        _themeCombo.Enabled = !isCustom;
     }
 
     private void RestartTimer()

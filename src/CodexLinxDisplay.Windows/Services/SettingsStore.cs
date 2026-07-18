@@ -30,6 +30,7 @@ internal sealed class SettingsStore
             settings.SystemMonitorUploadIntervalSeconds = settings.SystemMonitorUploadIntervalSeconds is 2 or 5 or 10 or 30
                 ? settings.SystemMonitorUploadIntervalSeconds
                 : 5;
+            if (!Enum.IsDefined(settings.CardTheme)) settings.CardTheme = CardTheme.DeepSpace;
             return settings;
         }
         catch

@@ -5,31 +5,23 @@ namespace CodexLinxDisplay.Windows.Services;
 
 internal static class StatusCardRenderer
 {
-    private static readonly Color Background = Color.FromArgb(8, 11, 18);
-    private static readonly Color Card = Color.FromArgb(17, 24, 39);
-    private static readonly Color Inset = Color.FromArgb(11, 18, 32);
-    private static readonly Color Border = Color.FromArgb(38, 52, 74);
-    private static readonly Color Mint = Color.FromArgb(85, 230, 184);
-    private static readonly Color Blue = Color.FromArgb(96, 165, 250);
-    private static readonly Color Amber = Color.FromArgb(251, 191, 36);
-    private static readonly Color White = Color.FromArgb(248, 250, 252);
-    private static readonly Color Muted = Color.FromArgb(148, 163, 184);
-
-    public static Bitmap RenderPomodoro(PomodoroSnapshot snapshot, int safeAreaHeight, DateTimeOffset now)
+    public static Bitmap RenderPomodoro(PomodoroSnapshot snapshot, int safeAreaHeight, DateTimeOffset now,
+        CardTheme theme = CardTheme.DeepSpace)
     {
-        var bitmap = CreateCanvas(safeAreaHeight, out var graphics, out var card);
+        var bitmap = CreateCanvas(safeAreaHeight, theme, out var graphics, out var card, out var colors);
         using (graphics)
         {
             var isBreak = snapshot.EffectivePhase is PomodoroPhase.ShortBreak or PomodoroPhase.LongBreak;
-            var accent = isBreak ? Blue : Mint;
-            DrawHeader(graphics, card, isBreak ? "BREAK" : "FOCUS", snapshot.IsRunning ? "LIVE" : snapshot.IsPaused ? "PAUSE" : "READY", accent);
+            var accent = isBreak ? colors.SecondaryAccent : colors.Accent;
+            DrawHeader(graphics, card, isBreak ? "BREAK" : "FOCUS",
+                snapshot.IsRunning ? "LIVE" : snapshot.IsPaused ? "PAUSE" : "READY", accent, colors);
 
             using var taskFont = new Font("Microsoft YaHei UI", 9F, FontStyle.Bold, GraphicsUnit.Pixel);
             using var timeFont = new Font("Segoe UI", 28F, FontStyle.Bold, GraphicsUnit.Pixel);
             using var labelFont = new Font("Microsoft YaHei UI", 8F, FontStyle.Regular, GraphicsUnit.Pixel);
             using var smallFont = new Font("Microsoft YaHei UI", 7F, FontStyle.Regular, GraphicsUnit.Pixel);
-            using var whiteBrush = new SolidBrush(White);
-            using var mutedBrush = new SolidBrush(Muted);
+            using var whiteBrush = new SolidBrush(colors.PrimaryText);
+            using var mutedBrush = new SolidBrush(colors.SecondaryText);
             using var accentBrush = new SolidBrush(accent);
 
             var task = string.IsNullOrWhiteSpace(snapshot.TaskName) ? "专注工作" : snapshot.TaskName;
@@ -40,12 +32,12 @@ internal static class StatusCardRenderer
             DrawCentered(graphics, time, timeFont, whiteBrush, new Rectangle(card.Left + 6, card.Top + 86, card.Width - 12, 45));
 
             var bar = new Rectangle(card.Left + 12, card.Top + 139, card.Width - 24, 8);
-            DrawProgress(graphics, bar, snapshot.Progress, accent);
+            DrawProgress(graphics, bar, snapshot.Progress, accent, colors);
             DrawCentered(graphics, snapshot.IsPaused ? "已暂停" : snapshot.IsRunning ? "保持节奏" : "点击开始", labelFont,
                 mutedBrush, new Rectangle(card.Left + 8, card.Top + 153, card.Width - 16, 20));
 
             var sessionBox = new Rectangle(card.Left + 10, card.Top + 184, card.Width - 20, 73);
-            DrawBox(graphics, sessionBox);
+            DrawBox(graphics, sessionBox, colors);
             DrawCentered(graphics, "今日完成", smallFont, mutedBrush,
                 new Rectangle(sessionBox.Left, sessionBox.Top + 10, sessionBox.Width, 18));
             DrawCentered(graphics, snapshot.CompletedFocusSessions.ToString(), timeFont, accentBrush,
@@ -61,38 +53,42 @@ internal static class StatusCardRenderer
         return bitmap;
     }
 
-    public static Bitmap RenderSystem(SystemSnapshot snapshot, int safeAreaHeight)
+    public static Bitmap RenderSystem(SystemSnapshot snapshot, int safeAreaHeight,
+        CardTheme theme = CardTheme.DeepSpace)
     {
-        var bitmap = CreateCanvas(safeAreaHeight, out var graphics, out var card);
+        var bitmap = CreateCanvas(safeAreaHeight, theme, out var graphics, out var card, out var colors);
         using (graphics)
         {
-            DrawHeader(graphics, card, "SYSTEM", "LIVE", Mint);
+            DrawHeader(graphics, card, "SYSTEM", "LIVE", colors.Accent, colors);
             using var bigFont = new Font("Segoe UI", 24F, FontStyle.Bold, GraphicsUnit.Pixel);
             using var valueFont = new Font("Segoe UI", 11F, FontStyle.Bold, GraphicsUnit.Pixel);
             using var labelFont = new Font("Microsoft YaHei UI", 7.5F, FontStyle.Regular, GraphicsUnit.Pixel);
-            using var whiteBrush = new SolidBrush(White);
-            using var mutedBrush = new SolidBrush(Muted);
-            using var mintBrush = new SolidBrush(Mint);
+            using var whiteBrush = new SolidBrush(colors.PrimaryText);
+            using var mutedBrush = new SolidBrush(colors.SecondaryText);
+            using var accentBrush = new SolidBrush(colors.Accent);
+            using var secondaryAccentBrush = new SolidBrush(colors.SecondaryAccent);
 
             graphics.DrawString("CPU", labelFont, mutedBrush, card.Left + 12, card.Top + 53);
             DrawRight(graphics, $"{snapshot.CpuPercent:0}%", bigFont, whiteBrush,
                 new Rectangle(card.Left + 8, card.Top + 62, card.Width - 16, 36));
-            DrawProgress(graphics, new Rectangle(card.Left + 12, card.Top + 105, card.Width - 24, 7), snapshot.CpuPercent / 100, Mint);
+            DrawProgress(graphics, new Rectangle(card.Left + 12, card.Top + 105, card.Width - 24, 7),
+                snapshot.CpuPercent / 100, colors.Accent, colors);
 
             graphics.DrawString("内存", labelFont, mutedBrush, card.Left + 12, card.Top + 128);
             DrawRight(graphics, $"{snapshot.MemoryPercent:0}%", valueFont, whiteBrush,
                 new Rectangle(card.Left + 46, card.Top + 122, card.Width - 58, 23));
-            DrawProgress(graphics, new Rectangle(card.Left + 12, card.Top + 151, card.Width - 24, 7), snapshot.MemoryPercent / 100, Blue);
+            DrawProgress(graphics, new Rectangle(card.Left + 12, card.Top + 151, card.Width - 24, 7),
+                snapshot.MemoryPercent / 100, colors.SecondaryAccent, colors);
             DrawCentered(graphics, $"{ToGiB(snapshot.UsedMemoryBytes):0.0} / {ToGiB(snapshot.TotalMemoryBytes):0.0} GB",
                 labelFont, mutedBrush, new Rectangle(card.Left + 8, card.Top + 163, card.Width - 16, 17));
 
             var networkBox = new Rectangle(card.Left + 10, card.Top + 194, card.Width - 20, 91);
-            DrawBox(graphics, networkBox);
+            DrawBox(graphics, networkBox, colors);
             graphics.DrawString("网络速率", labelFont, mutedBrush, networkBox.Left + 9, networkBox.Top + 8);
-            graphics.DrawString("↓", valueFont, mintBrush, networkBox.Left + 9, networkBox.Top + 32);
+            graphics.DrawString("↓", valueFont, accentBrush, networkBox.Left + 9, networkBox.Top + 32);
             DrawRight(graphics, FormatRate(snapshot.DownloadBytesPerSecond), valueFont, whiteBrush,
                 new Rectangle(networkBox.Left + 29, networkBox.Top + 29, networkBox.Width - 37, 22));
-            graphics.DrawString("↑", valueFont, Brushes.LightSkyBlue, networkBox.Left + 9, networkBox.Top + 60);
+            graphics.DrawString("↑", valueFont, secondaryAccentBrush, networkBox.Left + 9, networkBox.Top + 60);
             DrawRight(graphics, FormatRate(snapshot.UploadBytesPerSecond), valueFont, whiteBrush,
                 new Rectangle(networkBox.Left + 29, networkBox.Top + 57, networkBox.Width - 37, 22));
 
@@ -107,8 +103,10 @@ internal static class StatusCardRenderer
         return bitmap;
     }
 
-    private static Bitmap CreateCanvas(int safeAreaHeight, out Graphics graphics, out Rectangle card)
+    private static Bitmap CreateCanvas(int safeAreaHeight, CardTheme theme, out Graphics graphics,
+        out Rectangle card, out ScreenPalette colors)
     {
+        colors = ScreenThemes.Get(theme);
         var safeArea = Math.Clamp(safeAreaHeight, 44, 80);
         var bitmap = new Bitmap(ScreenImageRenderer.Width, ScreenImageRenderer.Height,
             System.Drawing.Imaging.PixelFormat.Format24bppRgb);
@@ -117,43 +115,45 @@ internal static class StatusCardRenderer
         graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
         graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
         graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
-        graphics.Clear(Background);
+        graphics.Clear(colors.Background);
         card = new Rectangle(9, safeArea + 1, 124, Math.Max(320, ScreenImageRenderer.Height - safeArea - 10));
         using var path = RoundedRectangle(card, 13);
-        using var fill = new SolidBrush(Card);
-        using var pen = new Pen(Border);
+        using var fill = new SolidBrush(colors.Card);
+        using var pen = new Pen(colors.Border);
         graphics.FillPath(fill, path);
         graphics.DrawPath(pen, path);
         return bitmap;
     }
 
-    private static void DrawHeader(Graphics graphics, Rectangle card, string title, string badge, Color accent)
+    private static void DrawHeader(Graphics graphics, Rectangle card, string title, string badge, Color accent,
+        ScreenPalette colors)
     {
         using var titleFont = new Font("Segoe UI", 10F, FontStyle.Bold, GraphicsUnit.Pixel);
         using var badgeFont = new Font("Segoe UI", 6F, FontStyle.Bold, GraphicsUnit.Pixel);
-        using var titleBrush = new SolidBrush(White);
+        using var titleBrush = new SolidBrush(colors.PrimaryText);
         using var accentBrush = new SolidBrush(accent);
         graphics.FillEllipse(accentBrush, card.Left + 10, card.Top + 14, 7, 7);
         graphics.DrawString(title, titleFont, titleBrush, card.Left + 22, card.Top + 11);
         DrawRight(graphics, badge, badgeFont, accentBrush,
             new Rectangle(card.Right - 43, card.Top + 12, 32, 14));
-        using var pen = new Pen(Border);
+        using var pen = new Pen(colors.Border);
         graphics.DrawLine(pen, card.Left + 9, card.Top + 38, card.Right - 9, card.Top + 38);
     }
 
-    private static void DrawBox(Graphics graphics, Rectangle bounds)
+    private static void DrawBox(Graphics graphics, Rectangle bounds, ScreenPalette colors)
     {
         using var path = RoundedRectangle(bounds, 10);
-        using var brush = new SolidBrush(Inset);
-        using var pen = new Pen(Border);
+        using var brush = new SolidBrush(colors.Inset);
+        using var pen = new Pen(colors.Border);
         graphics.FillPath(brush, path);
         graphics.DrawPath(pen, path);
     }
 
-    private static void DrawProgress(Graphics graphics, Rectangle bounds, double progress, Color color)
+    private static void DrawProgress(Graphics graphics, Rectangle bounds, double progress, Color color,
+        ScreenPalette colors)
     {
         using var backgroundPath = RoundedRectangle(bounds, bounds.Height / 2f);
-        using var backgroundBrush = new SolidBrush(Border);
+        using var backgroundBrush = new SolidBrush(colors.Border);
         graphics.FillPath(backgroundBrush, backgroundPath);
         var width = (int)Math.Round(bounds.Width * Math.Clamp(progress, 0, 1));
         if (width <= 0) return;

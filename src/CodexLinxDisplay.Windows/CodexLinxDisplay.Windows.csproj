@@ -10,7 +10,7 @@
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <AssemblyName>CodexLinxDisplay</AssemblyName>
     <RootNamespace>CodexLinxDisplay.Windows</RootNamespace>
-    <Version>0.3.0</Version>
+    <Version>0.4.0</Version>
     <EnableCompressionInSingleFile Condition="'$(SelfContained)' != 'false'">true</EnableCompressionInSingleFile>
     <SatelliteResourceLanguages>zh-Hans;en</SatelliteResourceLanguages>
     <DebugType Condition="'$(Configuration)' == 'Release'">none</DebugType>

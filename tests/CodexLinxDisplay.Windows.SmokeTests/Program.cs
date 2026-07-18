@@ -7,6 +7,7 @@ using CodexLinxDisplay.Windows.Models;
 using CodexLinxDisplay.Windows.Services;
 
 await TestRendererAsync();
+TestThemes();
 TestPomodoro();
 TestSystemMonitor();
 await TestImageApiAsync();
@@ -22,6 +23,11 @@ if (snapshotArgument is not null)
     TestUserInterface(Path.Combine(directory, name + "-pomodoro.png"), DisplayMode.Pomodoro);
     TestUserInterface(Path.Combine(directory, name + "-system.png"), DisplayMode.SystemMonitor);
 }
+
+var galleryArgument = args.FirstOrDefault(value =>
+    value.StartsWith("--theme-gallery=", StringComparison.OrdinalIgnoreCase));
+if (galleryArgument is not null)
+    SaveThemeGallery(galleryArgument[(galleryArgument.IndexOf('=') + 1)..]);
 
 if (args.Contains("--codex", StringComparer.OrdinalIgnoreCase))
 {
@@ -97,6 +103,69 @@ static void TestPomodoro()
     Assert(card.Width == 142 && card.Height == 428 && jpeg.Length > 0,
         "Pomodoro card is invalid.");
     Console.WriteLine($"Pomodoro: OK ({jpeg.Length} bytes)");
+}
+
+static void TestThemes()
+{
+    var renderedAt = new DateTimeOffset(2026, 7, 18, 2, 14, 0, TimeSpan.FromHours(8));
+    var pomodoro = new PomodoroSnapshot(PomodoroPhase.Focus, PomodoroPhase.Focus, "设计新主题",
+        TimeSpan.FromMinutes(18), TimeSpan.FromMinutes(25), 3, renderedAt.AddMinutes(18));
+    var system = new SystemSnapshot(42, 63, 20UL * 1024 * 1024 * 1024,
+        32UL * 1024 * 1024 * 1024, 2.4 * 1024 * 1024, 384 * 1024,
+        TimeSpan.FromHours(31), renderedAt);
+    var hashes = new HashSet<string>(StringComparer.Ordinal);
+
+    foreach (var theme in Enum.GetValues<CardTheme>())
+    {
+        using var usage = ScreenImageRenderer.RenderUsage(UsageSnapshot.Sample, 56, renderedAt, theme);
+        using var timer = StatusCardRenderer.RenderPomodoro(pomodoro, 56, renderedAt, theme);
+        using var monitor = StatusCardRenderer.RenderSystem(system, 56, theme);
+        foreach (var image in new[] { usage, timer, monitor })
+        {
+            Assert(image.Width == 142 && image.Height == 428, $"{theme} card dimensions are invalid.");
+            var jpeg = ScreenImageRenderer.EncodeJpeg(image, 90);
+            Assert(jpeg.Length is > 0 and <= ScreenImageRenderer.MaximumFileSize,
+                $"{theme} JPEG size is invalid.");
+        }
+        hashes.Add(Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+            ScreenImageRenderer.EncodeJpeg(usage, 90))));
+    }
+
+    Assert(hashes.Count == Enum.GetValues<CardTheme>().Length,
+        "Theme renders are not visually distinct.");
+    var dark = ScreenThemes.Get(CardTheme.DeepSpace);
+    var light = ScreenThemes.Get(CardTheme.MinimalLight);
+    Assert(light.Background.GetBrightness() > dark.Background.GetBrightness(),
+        "Light theme palette is not brighter than dark theme palette.");
+    Console.WriteLine("Themes: OK (4 palettes, 12 cards)");
+}
+
+static void SaveThemeGallery(string outputPath)
+{
+    var renderedAt = new DateTimeOffset(2026, 7, 18, 2, 14, 0, TimeSpan.FromHours(8));
+    var pomodoro = new PomodoroSnapshot(PomodoroPhase.Focus, PomodoroPhase.Focus, "设计新主题",
+        TimeSpan.FromMinutes(18), TimeSpan.FromMinutes(25), 3, renderedAt.AddMinutes(18));
+    var system = new SystemSnapshot(42, 63, 20UL * 1024 * 1024 * 1024,
+        32UL * 1024 * 1024 * 1024, 2.4 * 1024 * 1024, 384 * 1024,
+        TimeSpan.FromHours(31), renderedAt);
+    var themes = Enum.GetValues<CardTheme>();
+    using var gallery = new Bitmap(ScreenImageRenderer.Width * themes.Length, ScreenImageRenderer.Height * 3);
+    using (var graphics = Graphics.FromImage(gallery))
+    {
+        for (var column = 0; column < themes.Length; column++)
+        {
+            var theme = themes[column];
+            using var usage = ScreenImageRenderer.RenderUsage(UsageSnapshot.Sample, 56, renderedAt, theme);
+            using var timer = StatusCardRenderer.RenderPomodoro(pomodoro, 56, renderedAt, theme);
+            using var monitor = StatusCardRenderer.RenderSystem(system, 56, theme);
+            graphics.DrawImageUnscaled(usage, column * ScreenImageRenderer.Width, 0);
+            graphics.DrawImageUnscaled(timer, column * ScreenImageRenderer.Width, ScreenImageRenderer.Height);
+            graphics.DrawImageUnscaled(monitor, column * ScreenImageRenderer.Width, ScreenImageRenderer.Height * 2);
+        }
+    }
+    Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(outputPath))!);
+    gallery.Save(outputPath, ImageFormat.Png);
+    Console.WriteLine($"Theme gallery: OK ({outputPath})");
 }
 
 static void TestSystemMonitor()

@@ -11,41 +11,34 @@ internal static class ScreenImageRenderer
     public const int DefaultSafeArea = 56;
     public const int MaximumFileSize = 512 * 1024;
 
-    private static readonly Color Background = Color.FromArgb(8, 11, 18);
-    private static readonly Color CardBackground = Color.FromArgb(17, 24, 39);
-    private static readonly Color InsetBackground = Color.FromArgb(11, 18, 32);
-    private static readonly Color Border = Color.FromArgb(38, 52, 74);
-    private static readonly Color Accent = Color.FromArgb(85, 230, 184);
-    private static readonly Color PrimaryText = Color.FromArgb(248, 250, 252);
-    private static readonly Color SecondaryText = Color.FromArgb(148, 163, 184);
-    private static readonly Color TertiaryText = Color.FromArgb(100, 116, 139);
-
     public static Bitmap RenderUsage(
         UsageSnapshot? snapshot,
         int safeAreaHeight,
-        DateTimeOffset? currentTime = null)
+        DateTimeOffset? currentTime = null,
+        CardTheme theme = CardTheme.DeepSpace)
     {
+        var colors = ScreenThemes.Get(theme);
         var safeArea = Math.Clamp(safeAreaHeight, 44, 80);
         var bitmap = NewBitmap();
         using var graphics = PrepareGraphics(bitmap);
-        graphics.Clear(Background);
+        graphics.Clear(colors.Background);
 
         var cardBounds = new Rectangle(9, safeArea + 1, 124, Math.Max(320, Height - safeArea - 10));
         using (var cardPath = RoundedRectangle(cardBounds, 13))
-        using (var fill = new SolidBrush(CardBackground))
-        using (var borderPen = new Pen(Border))
+        using (var fill = new SolidBrush(colors.Card))
+        using (var borderPen = new Pen(colors.Border))
         {
             graphics.FillPath(fill, cardPath);
             graphics.DrawPath(borderPen, cardPath);
         }
 
-        DrawHeader(graphics, cardBounds, snapshot is not null);
-        using (var pen = new Pen(Border))
+        DrawHeader(graphics, cardBounds, snapshot is not null, colors);
+        using (var pen = new Pen(colors.Border))
             graphics.DrawLine(pen, cardBounds.Left + 9, cardBounds.Top + 38,
                 cardBounds.Right - 9, cardBounds.Top + 38);
-        DrawUsage(graphics, cardBounds, snapshot);
-        DrawResetCard(graphics, cardBounds, snapshot);
-        DrawClock(graphics, cardBounds, snapshot, currentTime ?? DateTimeOffset.Now);
+        DrawUsage(graphics, cardBounds, snapshot, colors);
+        DrawResetCard(graphics, cardBounds, snapshot, colors);
+        DrawClock(graphics, cardBounds, snapshot, currentTime ?? DateTimeOffset.Now, colors);
         return bitmap;
     }
 
@@ -110,62 +103,62 @@ internal static class ScreenImageRenderer
         return graphics;
     }
 
-    private static void DrawHeader(Graphics graphics, Rectangle card, bool hasSnapshot)
+    private static void DrawHeader(Graphics graphics, Rectangle card, bool hasSnapshot, ScreenPalette colors)
     {
-        using var accentBrush = new SolidBrush(Accent);
+        using var accentBrush = new SolidBrush(colors.Accent);
         graphics.FillEllipse(accentBrush, card.Left + 9, card.Top + 15, 8, 8);
-        DrawText(graphics, "CODEX", 15, FontStyle.Bold, PrimaryText,
+        DrawText(graphics, "CODEX", 15, FontStyle.Bold, colors.PrimaryText,
             new RectangleF(card.Left + 22, card.Top + 8, 62, 25), StringAlignment.Near);
         DrawText(graphics, hasSnapshot ? "实时" : "等待", 9, FontStyle.Bold,
-            hasSnapshot ? Accent : TertiaryText,
+            hasSnapshot ? colors.Accent : colors.TertiaryText,
             new RectangleF(card.Right - 40, card.Top + 10, 31, 20), StringAlignment.Far);
     }
 
-    private static void DrawUsage(Graphics graphics, Rectangle card, UsageSnapshot? snapshot)
+    private static void DrawUsage(Graphics graphics, Rectangle card, UsageSnapshot? snapshot, ScreenPalette colors)
     {
         var top = card.Top + 39;
-        DrawText(graphics, snapshot?.WindowTitle ?? "等待同步", 10, FontStyle.Bold, SecondaryText,
+        DrawText(graphics, snapshot?.WindowTitle ?? "等待同步", 10, FontStyle.Bold, colors.SecondaryText,
             new RectangleF(card.Left + 9, top + 10, card.Width - 18, 18), StringAlignment.Center);
 
         DrawText(graphics, snapshot is null ? "--" : snapshot.RemainingPercent.ToString(), 38,
-            FontStyle.Bold, PrimaryText,
+            FontStyle.Bold, colors.PrimaryText,
             new RectangleF(card.Left + 5, top + 24, card.Width - 29, 55), StringAlignment.Far);
-        DrawText(graphics, "%", 11, FontStyle.Bold, Accent,
+        DrawText(graphics, "%", 11, FontStyle.Bold, colors.Accent,
             new RectangleF(card.Right - 25, top + 48, 17, 20), StringAlignment.Near);
 
         var progress = new Rectangle(card.Left + 9, top + 77, 106, 8);
         using (var path = RoundedRectangle(progress, 4))
-        using (var brush = new SolidBrush(Border))
+        using (var brush = new SolidBrush(colors.Border))
             graphics.FillPath(brush, path);
         var progressWidth = (int)Math.Round(progress.Width * (snapshot?.RemainingPercent ?? 0) / 100d);
         if (progressWidth > 0)
         {
             using var path = RoundedRectangle(new Rectangle(progress.X, progress.Y, progressWidth, progress.Height), 4);
-            using var brush = new SolidBrush(Accent);
+            using var brush = new SolidBrush(colors.Accent);
             graphics.FillPath(brush, path);
         }
 
         DrawText(graphics, snapshot?.WindowDescription ?? "尚无数据", 9, FontStyle.Regular,
-            TertiaryText, new RectangleF(card.Left + 9, top + 89, 106, 18), StringAlignment.Center);
+            colors.TertiaryText, new RectangleF(card.Left + 9, top + 89, 106, 18), StringAlignment.Center);
     }
 
-    private static void DrawResetCard(Graphics graphics, Rectangle card, UsageSnapshot? snapshot)
+    private static void DrawResetCard(Graphics graphics, Rectangle card, UsageSnapshot? snapshot, ScreenPalette colors)
     {
         var bounds = new Rectangle(card.Left + 9, card.Top + 163, 106, 70);
         using (var path = RoundedRectangle(bounds, 10))
-        using (var fill = new SolidBrush(InsetBackground))
-        using (var pen = new Pen(Border))
+        using (var fill = new SolidBrush(colors.Inset))
+        using (var pen = new Pen(colors.Border))
         {
             graphics.FillPath(fill, path);
             graphics.DrawPath(pen, path);
         }
 
-        DrawText(graphics, "可用重置", 10, FontStyle.Bold, SecondaryText,
+        DrawText(graphics, "可用重置", 10, FontStyle.Bold, colors.SecondaryText,
             new RectangleF(bounds.Left + 11, bounds.Top + 8, 84, 18), StringAlignment.Near);
         DrawText(graphics, snapshot is null ? "--" : snapshot.AvailableResetCount.ToString(), 28,
-            FontStyle.Bold, PrimaryText,
+            FontStyle.Bold, colors.PrimaryText,
             new RectangleF(bounds.Left + 10, bounds.Top + 25, 58, 39), StringAlignment.Near);
-        DrawText(graphics, "次", 11, FontStyle.Bold, Accent,
+        DrawText(graphics, "次", 11, FontStyle.Bold, colors.Accent,
             new RectangleF(bounds.Right - 29, bounds.Top + 38, 18, 20), StringAlignment.Far);
     }
 
@@ -173,19 +166,20 @@ internal static class ScreenImageRenderer
         Graphics graphics,
         Rectangle card,
         UsageSnapshot? snapshot,
-        DateTimeOffset currentTime)
+        DateTimeOffset currentTime,
+        ScreenPalette colors)
     {
         var reset = snapshot?.ResetDate?.ToLocalTime();
         var now = currentTime.ToLocalTime();
         var bottom = card.Bottom - 15;
         var resetText = reset is null ? "重置时间未知" : $"下次重置 {reset:M/d HH:mm}";
-        DrawText(graphics, resetText, 8, FontStyle.Regular, TertiaryText,
+        DrawText(graphics, resetText, 8, FontStyle.Regular, colors.TertiaryText,
             new RectangleF(card.Left + 7, bottom - 94, 110, 15), StringAlignment.Center);
-        DrawText(graphics, "当前时间", 9, FontStyle.Bold, TertiaryText,
+        DrawText(graphics, "当前时间", 9, FontStyle.Bold, colors.TertiaryText,
             new RectangleF(card.Left + 9, bottom - 76, 106, 17), StringAlignment.Center);
-        DrawText(graphics, now.ToString("M月d日"), 17, FontStyle.Bold, PrimaryText,
+        DrawText(graphics, now.ToString("M月d日"), 17, FontStyle.Bold, colors.PrimaryText,
             new RectangleF(card.Left + 5, bottom - 57, 114, 24), StringAlignment.Center);
-        DrawText(graphics, now.ToString("HH:mm"), 22, FontStyle.Bold, Accent,
+        DrawText(graphics, now.ToString("HH:mm"), 22, FontStyle.Bold, colors.Accent,
             new RectangleF(card.Left + 5, bottom - 32, 114, 30), StringAlignment.Center);
     }
 

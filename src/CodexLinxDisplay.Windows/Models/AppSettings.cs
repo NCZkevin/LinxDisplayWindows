@@ -8,6 +8,14 @@ internal enum DisplayMode
     SystemMonitor = 3
 }
 
+internal enum CardTheme
+{
+    DeepSpace = 0,
+    MinimalLight = 1,
+    NeonPurple = 2,
+    AmberTerminal = 3
+}
+
 internal sealed class AppSettings
 {
     public string Endpoint { get; set; } = "http://192.168.31.71/image/upload";
@@ -18,4 +26,5 @@ internal sealed class AppSettings
     public string? CustomImagePath { get; set; }
     public string? CustomImageName { get; set; }
     public int SystemMonitorUploadIntervalSeconds { get; set; } = 5;
+    public CardTheme CardTheme { get; set; } = CardTheme.DeepSpace;
 }

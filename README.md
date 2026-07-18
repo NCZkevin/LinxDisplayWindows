@@ -19,6 +19,7 @@
 - 读取 Codex 本周/当前周期剩余用量、可用重置次数和重置时间。
 - 内置番茄钟：可设置任务、专注/短休/长休时长，支持开始、暂停、继续、跳过和重置；每完成四个番茄自动进入长休息。
 - 内置系统监控：显示 CPU、内存占用、实时下载/上传速率和系统运行时间，推送间隔可选 2、5、10 或 30 秒。
+- 四套卡片主题可随时切换：深空薄荷、明亮极简、霓虹紫和琥珀终端；Codex、番茄钟与系统监控共用所选主题。
 - 按 1、5、10 或 30 分钟自动刷新；内容没有变化时不重复推送。
 - 支持自定义图片，自动居中裁切，并为键盘自身的天气、Wi-Fi、电量状态栏保留顶部安全区。
 - 可调整顶部安全区（44–80px）和 JPEG 质量（50%–100%）。
@@ -91,7 +92,7 @@ artifacts\windows-x64\CodexLinxDisplay.exe
 
 ## 验证
 
-不依赖第三方测试框架的冒烟测试会检查全部卡片尺寸、番茄钟阶段切换、Windows 系统采样、JPEG 编码、顶部安全区，以及发送给本地模拟设备的 HTTP 请求：
+不依赖第三方测试框架的冒烟测试会检查四套主题的全部卡片尺寸与差异、番茄钟阶段切换、Windows 系统采样、JPEG 编码、顶部安全区，以及发送给本地模拟设备的 HTTP 请求：
 
 ```powershell
 dotnet run --project .\tests\CodexLinxDisplay.Windows.SmokeTests --configuration Release
@@ -121,6 +122,7 @@ HKCU\Software\Microsoft\Windows\CurrentVersion\Run\CodexLinxDisplay
 - `src/CodexLinxDisplay.Windows/Services/PomodoroService.cs`：可跨睡眠恢复的番茄钟状态机。
 - `src/CodexLinxDisplay.Windows/Services/SystemMonitorService.cs`：CPU、内存与网卡速率采样。
 - `src/CodexLinxDisplay.Windows/Services/StatusCardRenderer.cs`：番茄钟与系统监控卡片渲染。
+- `src/CodexLinxDisplay.Windows/Services/ScreenThemes.cs`：四套卡片主题及共享调色板。
 - `src/CodexLinxDisplay.Windows/Services/ImageApiClient.cs`：Linx68 图像接口上传。
 - `tests/CodexLinxDisplay.Windows.SmokeTests`：无需第三方测试框架的冒烟测试。
 - `scripts/build.ps1`：x64/ARM64 单文件发布脚本。
