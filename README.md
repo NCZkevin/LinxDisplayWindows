@@ -29,17 +29,17 @@
 
 ## 下载
 
-- 软件尚未正式发布；当前可从源码运行，或在草稿 PR 的 GitHub Actions 中下载测试构建。
-- 首个跨平台预览版发布后，[GitHub Releases](https://github.com/NCZkevin/LinxDisplayWindows/releases) 会提供 Windows、macOS Apple Silicon、macOS Intel 和 Linux 文件。
+- 从 [GitHub Releases](https://github.com/NCZkevin/LinxDisplayWindows/releases/latest) 下载最新正式版，提供 Windows、macOS Apple Silicon、macOS Intel 和 Linux 文件。
+- M1/M2/M3/M4/M5 Mac 选择 `macOS-AppleSilicon`，Intel Mac 选择 `macOS-Intel`；Windows 用户选择 `Windows-x64`。
 - 普通桌面软件应放在 GitHub Releases，而不是 Packages；Packages 主要用于 NuGet、容器等供其他软件依赖的制品。
 
-预览版采用自包含发布，无需预装 .NET。macOS 预览包暂未使用 Apple Developer ID 签名，首次打开可能需要在“系统设置 → 隐私与安全性”中手动允许。
+发布包采用自包含发布，无需预装 .NET。macOS 包暂未使用 Apple Developer ID 公证，首次打开可能需要在“系统设置 → 隐私与安全性”中手动允许。
 
 ### macOS 安装
 
 1. 在“关于本机”确认芯片类型：M1/M2/M3/M4/M5 选择 `AppleSilicon`，Intel 处理器选择 `Intel`。
 2. 下载对应的 `.zip` 并解压，得到 `LinxDisplay.app`。
-3. 将 `.app` 拖入“应用程序”后打开。当前预览版尚未使用 Apple Developer ID 公证；若系统拦截，请按住 Control 点击应用并选择“打开”，或在“系统设置 → 隐私与安全性”中允许。
+3. 将 `.app` 拖入“应用程序”后打开。当前版本尚未使用 Apple Developer ID 公证；若系统拦截，请按住 Control 点击应用并选择“打开”，或在“系统设置 → 隐私与安全性”中允许。
 
 发布目录中那个没有后缀的 `LinxDisplay` 是 `.app/Contents/MacOS` 内部的 Unix 可执行文件，不是给用户直接双击的安装成品。GitHub Actions 会组装、临时签名并校验完整 `.app`，再用 macOS 原生方式压缩成 `.zip`，以保留可执行权限和应用包结构。
 
@@ -96,7 +96,7 @@ export CODEX_CLI_PATH=/path/to/codex
 dotnet run --project tests/LinxDisplay.CrossPlatform.Tests --configuration Release
 ```
 
-GitHub Actions 会在 Windows、macOS 和 Ubuntu 上分别构建并运行同一套测试。推送与桌面项目版本一致的 `vX.Y.Z-preview.N` 标签时，会创建预发布 Release：
+GitHub Actions 会在 Windows、macOS 和 Ubuntu 上分别构建并运行同一套测试。推送与桌面项目版本一致的标签时会自动发布：`vX.Y.Z` 创建 Latest 正式版，`vX.Y.Z-preview.N` 创建 Prerelease：
 
 - `LinxDisplay-Windows-x64-*.zip`
 - `LinxDisplay-macOS-AppleSilicon-*.zip`
@@ -104,7 +104,7 @@ GitHub Actions 会在 Windows、macOS 和 Ubuntu 上分别构建并运行同一�
 - `LinxDisplay-Linux-x64-*.tar.gz`
 - `SHA256SUMS.txt`
 
-在跨平台版完成足够的实机验证前，建议只使用 `vX.Y.Z-preview.N` 预览标签；准备首次正式发布时再启用 `vX.Y.Z` 正式标签。
+正式版和预览版使用同一套跨平台构建、打包、校验和生成流程。
 
 ## 本地数据与隐私
 
@@ -126,7 +126,7 @@ GitHub Actions 会在 Windows、macOS 和 Ubuntu 上分别构建并运行同一�
 - `tests/LinxDisplay.CrossPlatform.Tests`：三平台共用冒烟测试。
 - `src/LinxDisplay.Windows`：保留的 WinForms 原实现。
 - `.github/workflows/cross-platform-ci.yml`：Windows/macOS/Linux 持续集成。
-- `.github/workflows/cross-platform-preview.yml`：跨平台预览版发布。
+- `.github/workflows/cross-platform-release.yml`：跨平台正式版与预览版发布。
 
 ## Windows WinForms 原实现
 

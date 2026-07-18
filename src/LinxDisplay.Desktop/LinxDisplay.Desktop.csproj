@@ -7,7 +7,7 @@
     <ApplicationIcon Condition="$([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('win')) Or ('$(RuntimeIdentifier)' == '' And $([MSBuild]::IsOSPlatform('Windows')))">..\LinxDisplay.Windows\Assets\app.ico</ApplicationIcon>
     <AssemblyName>LinxDisplay</AssemblyName>
     <RootNamespace>LinxDisplay.Desktop</RootNamespace>
-    <Version>0.5.0-preview.1</Version>
+    <Version>0.5.0</Version>
   </PropertyGroup>
 
   <ItemGroup>
