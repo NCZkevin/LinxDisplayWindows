@@ -6,6 +6,14 @@
   <img src="src/CodexLinxDisplay.Windows/Assets/app-icon.png" width="128" alt="Codex 屏显应用图标">
 </p>
 
+## 下载
+
+普通用户请从 [GitHub Releases](https://github.com/NCZkevin/LinxDisplayWindows/releases/latest) 下载最新版本：
+
+- `SelfContained`：推荐版本，解压即可运行，不需要预先安装 .NET。
+- `FrameworkDependent`：体积更小，但电脑必须安装 .NET 8 Desktop Runtime。
+- `SHA256SUMS.txt`：下载文件的 SHA-256 校验值。
+
 ## 功能
 
 - 读取 Codex 本周/当前周期剩余用量、可用重置次数和重置时间。
@@ -78,6 +86,8 @@ artifacts\windows-x64\CodexLinxDisplay.exe
 
 输出位于 `artifacts\windows-x64-framework-dependent`。它本身很小，但离开已安装的 .NET Desktop Runtime 无法运行。
 当前 x64 框架依赖构建约为 `0.40MB`。
+
+仓库包含自动发布流程：项目版本更新后推送对应的 `vX.Y.Z` Git 标签，GitHub Actions 会运行冒烟测试、构建以上两个版本，并自动创建带 ZIP 和校验文件的 GitHub Release。
 
 ## 验证
 

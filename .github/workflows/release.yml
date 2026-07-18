@@ -1,0 +1,83 @@
+name: Build and publish release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  windows-release:
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Verify tag matches project version
+        shell: pwsh
+        run: |
+          [xml]$project = Get-Content "src/CodexLinxDisplay.Windows/CodexLinxDisplay.Windows.csproj"
+          $version = $project.Project.PropertyGroup.Version | Select-Object -First 1
+          if ("v$version" -ne "${{ github.ref_name }}") {
+            throw "Tag ${{ github.ref_name }} does not match project version $version."
+          }
+
+      - name: Run smoke tests
+        shell: pwsh
+        run: |
+          dotnet restore CodexLinxDisplayWindows.sln
+          dotnet run --project tests/CodexLinxDisplay.Windows.SmokeTests --configuration Release --no-restore
+
+      - name: Restore Windows runtime assets
+        shell: pwsh
+        run: dotnet restore src/CodexLinxDisplay.Windows/CodexLinxDisplay.Windows.csproj --runtime win-x64
+
+      - name: Build Windows packages
+        shell: pwsh
+        run: |
+          ./scripts/build.ps1
+          ./scripts/build.ps1 -FrameworkDependent
+
+      - name: Create release archives and checksums
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart("v")
+          $releaseDirectory = Join-Path $PWD ".release"
+          New-Item -ItemType Directory -Path $releaseDirectory -Force | Out-Null
+
+          $selfContained = Join-Path $releaseDirectory "CodexLinxDisplay-Windows-x64-SelfContained-v$version.zip"
+          $frameworkDependent = Join-Path $releaseDirectory "CodexLinxDisplay-Windows-x64-FrameworkDependent-v$version.zip"
+          Compress-Archive -LiteralPath "artifacts/windows-x64/CodexLinxDisplay.exe" -DestinationPath $selfContained
+          Compress-Archive -LiteralPath "artifacts/windows-x64-framework-dependent/CodexLinxDisplay.exe" -DestinationPath $frameworkDependent
+
+          Get-ChildItem $releaseDirectory -Filter "*.zip" | Sort-Object Name | ForEach-Object {
+            $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $($_.Name)"
+          } | Set-Content (Join-Path $releaseDirectory "SHA256SUMS.txt") -Encoding utf8NoBOM
+
+      - name: Publish GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $notes = @"
+          ## 下载建议
+
+          - **SelfContained**：推荐普通用户下载，无需预先安装 .NET。
+          - **FrameworkDependent**：文件更小，但电脑必须安装 .NET 8 Desktop Runtime。
+          - `SHA256SUMS.txt`：用于校验下载文件是否完整。
+
+          解压后运行 `CodexLinxDisplay.exe`，在软件中填写 Linx68 键盘的图像 API 地址即可。
+          "@
+          $assets = Get-ChildItem ".release" -File | ForEach-Object FullName
+          gh release create $tag $assets --verify-tag --latest --title "CodexLinxDisplay $tag" --notes $notes
