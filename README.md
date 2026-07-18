@@ -3,7 +3,7 @@
 把 Codex 用量、番茄钟、CPU/内存/网络状态或自定义图片渲染为 `142 × 428` JPEG，并通过局域网推送到 Linx68 键盘左侧屏幕。
 
 <p align="center">
-  <img src="src/LinxDisplay.Windows/Assets/app-icon.png" width="128" alt="LinxDisplay 应用图标">
+  <img src="docs/LinxDisplay-promo-v2.png" width="100%" alt="LinxDisplay 产品宣传图：Codex 用量、番茄钟、系统监控与多主题键盘屏幕">
 </p>
 
 ## 平台状态
